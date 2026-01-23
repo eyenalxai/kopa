@@ -11,7 +11,6 @@
     "dev": "bun run src/index.tsx"
   },
   "dependencies": {
-    "@effect/cli": "^0.68.0",
     "@effect/platform-bun": "^0.68.0",
     "@opentui/core": "^0.1.74",
     "@opentui/react": "^0.1.74",
