@@ -9,6 +9,8 @@ import { formatTimestamp, truncateContent } from "../lib/clipboard-list-utils"
 import { logError } from "../lib/logger"
 import { useTheme } from "../lib/theme"
 
+import { SearchInput } from "./search-input"
+
 type ClipboardListProps = {
   readonly entries: ReadonlyArray<TextEntryRow>
 }
@@ -16,7 +18,7 @@ type ClipboardListProps = {
 export const ClipboardList = ({ entries }: ClipboardListProps) => {
   const theme = useTheme()
   const [searchQuery, setSearchQuery] = useState("")
-  const [focusedElement, setFocusedElement] = useState<"input" | "list">("list")
+  const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
   const searcher = useMemo(
     () =>
       new Searcher(Array.from(entries), {
@@ -51,14 +53,11 @@ export const ClipboardList = ({ entries }: ClipboardListProps) => {
 
   return (
     <box flexDirection="column" border borderColor={theme.border} padding={1} gap={1}>
-      <box border borderColor={theme.borderSubtle} padding={1}>
-        <input
-          placeholder="Search clipboard..."
-          value={searchQuery}
-          focused={focusedElement === "input"}
-          onInput={setSearchQuery}
-        />
-      </box>
+      <SearchInput
+        value={searchQuery}
+        focused={focusedElement === "input"}
+        onInput={setSearchQuery}
+      />
       <select
         focused={focusedElement === "list"}
         options={options}
