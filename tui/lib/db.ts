@@ -35,7 +35,7 @@ export type TextEntryRow = {
   readonly created_at: number
 }
 
-export const getTextEntries = (limit = 50) =>
+export const getTextEntries = () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     return yield* sql<TextEntryRow>`
@@ -43,6 +43,5 @@ export const getTextEntries = (limit = 50) =>
       FROM clipboard_entries ce
       JOIN text_entries te ON ce.id = te.entry_id
       ORDER BY ce.created_at DESC
-      LIMIT ${limit}
     `
   })

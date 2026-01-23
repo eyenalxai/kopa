@@ -7,17 +7,15 @@ import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
 
 export const App = () => {
-  const limit = 20
-
   const {
     data: entries,
     error,
     isPending,
   } = useQuery<ReadonlyArray<TextEntryRow>>({
-    queryKey: ["textEntries", limit],
+    queryKey: ["textEntries"],
     queryFn: () =>
       Effect.runPromise(
-        getTextEntries(limit).pipe(
+        getTextEntries().pipe(
           Effect.provide(SqlLive),
           Effect.catchAllCause((cause) => Effect.fail(new Error(Cause.pretty(cause)))),
         ),
