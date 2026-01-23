@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { Cause, Effect } from "effect"
 import { useMemo, useState } from "react"
+import { useDebounceValue } from "usehooks-ts"
 
 import { dbPath, getTextEntries, searchTextEntries, SqlLive, type TextEntryRow } from "../lib/db"
 
@@ -10,19 +11,21 @@ import { ContentError } from "./error"
 export const App = () => {
   const [searchQuery, setSearchQuery] = useState("")
   const trimmedQuery = useMemo(() => searchQuery.trim(), [searchQuery])
+  const [debouncedQuery] = useDebounceValue(trimmedQuery, 150)
   const {
     data: entries,
     error,
     isPending,
   } = useQuery<ReadonlyArray<TextEntryRow>>({
-    queryKey: ["textEntries", trimmedQuery],
+    queryKey: ["textEntries", debouncedQuery],
     queryFn: () =>
       Effect.runPromise(
-        (trimmedQuery ? searchTextEntries(trimmedQuery) : getTextEntries()).pipe(
+        (debouncedQuery ? searchTextEntries(debouncedQuery) : getTextEntries()).pipe(
           Effect.provide(SqlLive),
           Effect.catchAllCause((cause) => Effect.fail(new Error(Cause.pretty(cause)))),
         ),
       ),
+    placeholderData: keepPreviousData,
   })
 
   if (error) {
@@ -39,9 +42,15 @@ export const App = () => {
     return <ContentError title="Error loading clipboard entries">{displayError}</ContentError>
   }
 
-  if (isPending) {
+  if (isPending && !entries) {
     return <text>Loading clipboard entries...</text>
   }
 
-  return <ClipboardList entries={entries} searchQuery={searchQuery} onSearch={setSearchQuery} />
+  return (
+    <ClipboardList
+      entries={entries ?? []}
+      searchQuery={searchQuery}
+      onSearch={setSearchQuery}
+    />
+  )
 }
