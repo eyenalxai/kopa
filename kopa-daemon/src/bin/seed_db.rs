@@ -5,19 +5,38 @@ use kopa_daemon::db::init_db;
 use rand::Rng;
 use rusqlite::params;
 
-fn random_string(rng: &mut impl Rng, len: usize) -> String {
-    let mut value = String::with_capacity(len);
-    for _ in 0..len {
-        let byte = rng.random_range(b'a'..=b'z');
-        value.push(byte as char);
+const WORDS: &[&str] = &[
+    "the", "be", "to", "of", "and", "a", "in", "that", "have", "I", "it", "for", "not", "on",
+    "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from", "they", "we", "say",
+    "her", "she", "or", "an", "will", "my", "one", "all", "would", "there", "their", "what", "so",
+    "up", "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can", "like",
+    "time", "no", "just", "him", "know", "take", "people", "into", "year", "your", "good", "some",
+    "could", "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over",
+    "think", "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way",
+    "even", "new", "want", "because", "any", "these", "give", "day", "most", "us", "code", "file",
+    "copy", "paste", "text", "data", "system", "user", "program", "function", "error", "debug",
+    "test", "build", "run", "server", "client", "network", "database", "query", "hello", "world",
+    "foo", "bar", "baz", "example", "sample", "demo", "project", "module",
+];
+
+fn random_words(rng: &mut impl Rng, target_len: usize) -> String {
+    let mut result = String::with_capacity(target_len);
+    while result.len() < target_len {
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        let Some(word) = WORDS.get(rng.random_range(0..WORDS.len())) else {
+            break;
+        };
+        result.push_str(word);
     }
-    value
+    result
 }
 
 fn main() -> Result<()> {
     let mut conn = init_db()?;
-    let total: i64 = 10_000;
-    let batch_size: i64 = 10_000;
+    let total: i64 = 1_000_000;
+    let batch_size: i64 = 50_000;
     let batches = total / batch_size;
 
     let base_time = SystemTime::now()
@@ -39,8 +58,8 @@ fn main() -> Result<()> {
             )?;
 
             for _ in 0..batch_size {
-                let len = rng.random_range(100..=10_000) as usize;
-                let content = random_string(&mut rng, len);
+                let len = rng.random_range(20..=500) as usize;
+                let content = random_words(&mut rng, len);
                 let created_at = base_time - rng.random_range(0..=86_400);
                 insert_clipboard.execute(params!["text", created_at])?;
                 let entry_id = tx.last_insert_rowid();
