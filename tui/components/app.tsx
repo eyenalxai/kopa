@@ -21,26 +21,19 @@ export const App = () => {
       ["textEntries", string],
       number | undefined
     >({
-    queryKey,
-    queryFn: ({ pageParam }) =>
-      Effect.runPromise(
-        debouncedQuery
-          ? searchTextEntries(debouncedQuery, pageParam)
-          : getTextEntries(pageParam),
-      ),
-    initialPageParam: undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    placeholderData: keepPreviousData,
-  })
+      queryKey,
+      queryFn: ({ pageParam }) =>
+        Effect.runPromise(
+          debouncedQuery ? searchTextEntries(debouncedQuery, pageParam) : getTextEntries(pageParam),
+        ),
+      initialPageParam: undefined,
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      placeholderData: keepPreviousData,
+    })
   const entries = useMemo(() => data?.pages.flatMap((page) => page.entries) ?? [], [data])
 
   if (error) {
-    const errorMessage =
-      typeof error === "string"
-        ? error
-        : error instanceof Error
-          ? error.message
-          : (JSON.stringify(error) ?? "Unknown error")
+    const errorMessage = error.message
     const displayError =
       errorMessage.includes("ENOENT") || errorMessage.includes("ECONNREFUSED")
         ? `Unable to connect to kopa daemon at ${socketPath}.`

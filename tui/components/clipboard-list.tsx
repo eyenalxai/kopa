@@ -28,7 +28,7 @@ export const ClipboardList = ({
 }: ClipboardListProps) => {
   const theme = useTheme()
   const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
-  const entriesById = new Map(entries.map((entry) => [entry.id, entry]))
+  const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
   const options = useMemo(
     () =>
       entries.map((entry) => ({

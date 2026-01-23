@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use directories::ProjectDirs;
 use rusqlite::{Connection, params};
 
-fn data_dir() -> Result<PathBuf> {
+pub fn data_dir() -> Result<PathBuf> {
     let dirs = ProjectDirs::from("com", "kopa", "kopa")
         .ok_or_else(|| anyhow!("Unable to resolve data directory"))?;
     Ok(dirs.data_local_dir().to_path_buf())
@@ -53,6 +53,14 @@ pub fn init_db() -> Result<Connection> {
         BEGIN
             INSERT INTO text_entries_fts(text_entries_fts, rowid, content)
             VALUES ('delete', old.entry_id, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS text_entries_au
+            AFTER UPDATE ON text_entries
+        BEGIN
+            INSERT INTO text_entries_fts(text_entries_fts, rowid, content)
+            VALUES ('delete', old.entry_id, old.content);
+            INSERT INTO text_entries_fts(rowid, content)
+            VALUES (new.entry_id, new.content);
         END;
         CREATE INDEX IF NOT EXISTS idx_created_at
             ON clipboard_entries(created_at DESC);",

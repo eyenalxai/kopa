@@ -2,7 +2,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
-use directories::ProjectDirs;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -79,7 +78,8 @@ async fn handle_connection(stream: UnixStream) -> Result<()> {
     let request: Request = serde_json::from_str(buffer.trim_end())
         .map_err(|err| anyhow!("Invalid request payload: {err}"))?;
 
-    let response = tokio::task::spawn_blocking(move || handle_request(request))
+    let conn = db::init_db()?;
+    let response = tokio::task::spawn_blocking(move || handle_request(conn, request))
         .await
         .context("IPC handler task failed")??;
 
@@ -87,8 +87,7 @@ async fn handle_connection(stream: UnixStream) -> Result<()> {
     Ok(())
 }
 
-fn handle_request(request: Request) -> Result<Response> {
-    let conn = db::init_db()?;
+fn handle_request(conn: Connection, request: Request) -> Result<Response> {
     match request {
         Request::ListEntries { cursor, limit } => {
             let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE);
@@ -142,16 +141,8 @@ fn get_text_entries(
                 ORDER BY ce.created_at DESC
                 LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![cursor, limit_plus_one], |row| {
-                Ok(TextEntry {
-                    id: row.get(0)?,
-                    content: row.get(1)?,
-                    created_at: row.get(2)?,
-                })
-            })?;
-            for row in rows {
-                entries.push(row?);
-            }
+            let rows = stmt.query_map(params![cursor, limit_plus_one], map_entry)?;
+            entries.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
         None => {
             let mut stmt = conn.prepare(
@@ -161,26 +152,12 @@ fn get_text_entries(
                 ORDER BY ce.created_at DESC
                 LIMIT ?1",
             )?;
-            let rows = stmt.query_map(params![limit_plus_one], |row| {
-                Ok(TextEntry {
-                    id: row.get(0)?,
-                    content: row.get(1)?,
-                    created_at: row.get(2)?,
-                })
-            })?;
-            for row in rows {
-                entries.push(row?);
-            }
+            let rows = stmt.query_map(params![limit_plus_one], map_entry)?;
+            entries.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
     }
 
-    if entries.len() > limit as usize {
-        entries.truncate(limit as usize);
-        let next_cursor = entries.last().map(|entry| entry.created_at);
-        Ok((entries, next_cursor))
-    } else {
-        Ok((entries, None))
-    }
+    Ok(finalize_page(entries, limit))
 }
 
 fn search_text_entries(
@@ -213,16 +190,8 @@ fn search_text_entries(
                 ORDER BY bm25(text_entries_fts), ce.created_at DESC
                 LIMIT ?3",
             )?;
-            let rows = stmt.query_map(params![fts_query, cursor, limit_plus_one], |row| {
-                Ok(TextEntry {
-                    id: row.get(0)?,
-                    content: row.get(1)?,
-                    created_at: row.get(2)?,
-                })
-            })?;
-            for row in rows {
-                entries.push(row?);
-            }
+            let rows = stmt.query_map(params![fts_query, cursor, limit_plus_one], map_entry)?;
+            entries.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
         None => {
             let mut stmt = conn.prepare(
@@ -234,16 +203,8 @@ fn search_text_entries(
                 ORDER BY bm25(text_entries_fts), ce.created_at DESC
                 LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![fts_query, limit_plus_one], |row| {
-                Ok(TextEntry {
-                    id: row.get(0)?,
-                    content: row.get(1)?,
-                    created_at: row.get(2)?,
-                })
-            })?;
-            for row in rows {
-                entries.push(row?);
-            }
+            let rows = stmt.query_map(params![fts_query, limit_plus_one], map_entry)?;
+            entries.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
     }
 
@@ -251,13 +212,7 @@ fn search_text_entries(
         return search_with_like(conn, trimmed, cursor, limit);
     }
 
-    if entries.len() > limit as usize {
-        entries.truncate(limit as usize);
-        let next_cursor = entries.last().map(|entry| entry.created_at);
-        Ok((entries, next_cursor))
-    } else {
-        Ok((entries, None))
-    }
+    Ok(finalize_page(entries, limit))
 }
 
 fn search_with_like(
@@ -266,7 +221,7 @@ fn search_with_like(
     cursor: Option<i64>,
     limit: u32,
 ) -> Result<(Vec<TextEntry>, Option<i64>)> {
-    let like_query = format!("%{query}%");
+    let like_query = format!("%{}%", escape_like(query));
     let mut entries = Vec::new();
     let limit_plus_one = i64::from(limit + 1);
 
@@ -276,66 +231,70 @@ fn search_with_like(
                 "SELECT ce.id, te.content, ce.created_at
                 FROM clipboard_entries ce
                 JOIN text_entries te ON ce.id = te.entry_id
-                WHERE te.content LIKE ?1 AND ce.created_at < ?2
+                WHERE te.content LIKE ?1 ESCAPE '\\' AND ce.created_at < ?2
                 ORDER BY ce.created_at DESC
                 LIMIT ?3",
             )?;
-            let rows = stmt.query_map(params![like_query, cursor, limit_plus_one], |row| {
-                Ok(TextEntry {
-                    id: row.get(0)?,
-                    content: row.get(1)?,
-                    created_at: row.get(2)?,
-                })
-            })?;
-            for row in rows {
-                entries.push(row?);
-            }
+            let rows = stmt.query_map(params![like_query, cursor, limit_plus_one], map_entry)?;
+            entries.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
         None => {
             let mut stmt = conn.prepare(
                 "SELECT ce.id, te.content, ce.created_at
                 FROM clipboard_entries ce
                 JOIN text_entries te ON ce.id = te.entry_id
-                WHERE te.content LIKE ?1
+                WHERE te.content LIKE ?1 ESCAPE '\\'
                 ORDER BY ce.created_at DESC
                 LIMIT ?2",
             )?;
-            let rows = stmt.query_map(params![like_query, limit_plus_one], |row| {
-                Ok(TextEntry {
-                    id: row.get(0)?,
-                    content: row.get(1)?,
-                    created_at: row.get(2)?,
-                })
-            })?;
-            for row in rows {
-                entries.push(row?);
-            }
+            let rows = stmt.query_map(params![like_query, limit_plus_one], map_entry)?;
+            entries.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
     }
 
+    Ok(finalize_page(entries, limit))
+}
+
+fn map_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<TextEntry> {
+    Ok(TextEntry {
+        id: row.get(0)?,
+        content: row.get(1)?,
+        created_at: row.get(2)?,
+    })
+}
+
+fn finalize_page(mut entries: Vec<TextEntry>, limit: u32) -> (Vec<TextEntry>, Option<i64>) {
     if entries.len() > limit as usize {
         entries.truncate(limit as usize);
         let next_cursor = entries.last().map(|entry| entry.created_at);
-        Ok((entries, next_cursor))
+        (entries, next_cursor)
     } else {
-        Ok((entries, None))
+        (entries, None)
     }
+}
+
+fn escape_like(query: &str) -> String {
+    query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn to_fts_query(query: &str) -> String {
     query
         .split_whitespace()
         .filter(|term| !term.is_empty())
-        .map(|term| format!("{term}*"))
+        .map(|term| {
+            let escaped = term.replace('"', "\"\"");
+            format!("\"{escaped}\"*")
+        })
         .collect::<Vec<String>>()
         .join(" ")
 }
 
 fn socket_path() -> Result<PathBuf> {
-    let dirs = ProjectDirs::from("com", "kopa", "kopa")
-        .ok_or_else(|| anyhow!("Unable to resolve data directory"))?;
-    let dir = dirs.data_local_dir();
-    fs::create_dir_all(dir)
+    let dir = db::data_dir()?;
+    fs::create_dir_all(&dir)
         .with_context(|| format!("Failed to create data directory {}", dir.display()))?;
     Ok(dir.join("kopa.sock"))
 }

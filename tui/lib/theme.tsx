@@ -1,6 +1,8 @@
 import { useRenderer } from "@opentui/react"
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 
+import { logError } from "./logger"
+
 const ANSI_FALLBACK = [
   "#000000",
   "#800000",
@@ -131,7 +133,10 @@ export const ThemeProvider = ({ children }: { readonly children: ReactNode }) =>
           }),
         )
       })
-      .catch(() => {})
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Failed to load theme palette"
+        logError(message)
+      })
       .finally(() => {
         if (active) {
           setIsLoading(false)

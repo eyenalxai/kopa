@@ -47,8 +47,11 @@ fn run_clipboard_monitor() -> Result<()> {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     thread::spawn(|| {
-        if let Err(error) = run_clipboard_monitor() {
-            eprintln!("Clipboard monitor error: {error:?}");
+        loop {
+            if let Err(error) = run_clipboard_monitor() {
+                eprintln!("Clipboard monitor error: {error:?}");
+                thread::sleep(Duration::from_secs(1));
+            }
         }
     });
 
