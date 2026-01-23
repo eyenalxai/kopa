@@ -2,13 +2,18 @@ import { useQuery } from "@tanstack/react-query"
 import { Cause, Effect } from "effect"
 
 import { dbPath, getTextEntries, SqlLive, type TextEntryRow } from "../lib/db"
+
 import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
 
 export const App = () => {
   const limit = 20
 
-  const { data, error, isPending } = useQuery<ReadonlyArray<TextEntryRow>>({
+  const {
+    data: entries,
+    error,
+    isPending,
+  } = useQuery<ReadonlyArray<TextEntryRow>>({
     queryKey: ["textEntries", limit],
     queryFn: () =>
       Effect.runPromise(
@@ -18,7 +23,7 @@ export const App = () => {
         ),
       ),
   })
-  const entries = data ?? []
+
   if (error) {
     const errorMessage =
       typeof error === "string"
