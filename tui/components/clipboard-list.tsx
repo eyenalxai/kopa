@@ -13,9 +13,19 @@ type ClipboardListProps = {
   readonly entries: ReadonlyArray<TextEntryRow>
   readonly searchQuery: string
   readonly onSearch: (query: string) => void
+  readonly onLoadMore: () => void
+  readonly hasMore: boolean
+  readonly isLoadingMore: boolean
 }
 
-export const ClipboardList = ({ entries, searchQuery, onSearch }: ClipboardListProps) => {
+export const ClipboardList = ({
+  entries,
+  searchQuery,
+  onSearch,
+  onLoadMore,
+  hasMore,
+  isLoadingMore,
+}: ClipboardListProps) => {
   const theme = useTheme()
   const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]))
@@ -61,6 +71,15 @@ export const ClipboardList = ({ entries, searchQuery, onSearch }: ClipboardListP
         showDescription
         showScrollIndicator
         wrapSelection
+        onChange={(index) => {
+          if (entries.length === 0) {
+            return
+          }
+          const threshold = 5
+          if (hasMore && !isLoadingMore && index >= entries.length - threshold) {
+            onLoadMore()
+          }
+        }}
         onSelect={(_, option) => {
           if (!option || typeof option.value !== "number") {
             return

@@ -3,12 +3,14 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
 use directories::ProjectDirs;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::db;
+
+const DEFAULT_PAGE_SIZE: u32 = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextEntry {
@@ -20,14 +22,24 @@ pub struct TextEntry {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum Request {
-    ListEntries,
-    SearchEntries { query: String },
+    ListEntries {
+        cursor: Option<i64>,
+        limit: Option<u32>,
+    },
+    SearchEntries {
+        query: String,
+        cursor: Option<i64>,
+        limit: Option<u32>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum Response {
-    Entries { entries: Vec<TextEntry> },
+    Entries {
+        entries: Vec<TextEntry>,
+        next_cursor: Option<i64>,
+    },
     Error { message: String },
 }
 
@@ -78,13 +90,25 @@ async fn handle_connection(stream: UnixStream) -> Result<()> {
 fn handle_request(request: Request) -> Result<Response> {
     let conn = db::init_db()?;
     match request {
-        Request::ListEntries => {
-            let entries = get_text_entries(&conn)?;
-            Ok(Response::Entries { entries })
+        Request::ListEntries { cursor, limit } => {
+            let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE);
+            let (entries, next_cursor) = get_text_entries(&conn, cursor, limit)?;
+            Ok(Response::Entries {
+                entries,
+                next_cursor,
+            })
         }
-        Request::SearchEntries { query } => {
-            let entries = search_text_entries(&conn, &query)?;
-            Ok(Response::Entries { entries })
+        Request::SearchEntries {
+            query,
+            cursor,
+            limit,
+        } => {
+            let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE);
+            let (entries, next_cursor) = search_text_entries(&conn, &query, cursor, limit)?;
+            Ok(Response::Entries {
+                entries,
+                next_cursor,
+            })
         }
     }
 }
@@ -100,89 +124,202 @@ async fn write_response(
     Ok(())
 }
 
-fn get_text_entries(conn: &Connection) -> Result<Vec<TextEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT ce.id, te.content, ce.created_at
-        FROM clipboard_entries ce
-        JOIN text_entries te ON ce.id = te.entry_id
-        ORDER BY ce.created_at DESC",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(TextEntry {
-            id: row.get(0)?,
-            content: row.get(1)?,
-            created_at: row.get(2)?,
-        })
-    })?;
-
+fn get_text_entries(
+    conn: &Connection,
+    cursor: Option<i64>,
+    limit: u32,
+) -> Result<(Vec<TextEntry>, Option<i64>)> {
+    let limit_plus_one = i64::from(limit + 1);
     let mut entries = Vec::new();
-    for row in rows {
-        entries.push(row?);
+
+    match cursor {
+        Some(cursor) => {
+            let mut stmt = conn.prepare(
+                "SELECT ce.id, te.content, ce.created_at
+                FROM clipboard_entries ce
+                JOIN text_entries te ON ce.id = te.entry_id
+                WHERE ce.created_at < ?1
+                ORDER BY ce.created_at DESC
+                LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![cursor, limit_plus_one], |row| {
+                Ok(TextEntry {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?;
+            for row in rows {
+                entries.push(row?);
+            }
+        }
+        None => {
+            let mut stmt = conn.prepare(
+                "SELECT ce.id, te.content, ce.created_at
+                FROM clipboard_entries ce
+                JOIN text_entries te ON ce.id = te.entry_id
+                ORDER BY ce.created_at DESC
+                LIMIT ?1",
+            )?;
+            let rows = stmt.query_map(params![limit_plus_one], |row| {
+                Ok(TextEntry {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?;
+            for row in rows {
+                entries.push(row?);
+            }
+        }
     }
-    Ok(entries)
+
+    if entries.len() > limit as usize {
+        entries.truncate(limit as usize);
+        let next_cursor = entries.last().map(|entry| entry.created_at);
+        Ok((entries, next_cursor))
+    } else {
+        Ok((entries, None))
+    }
 }
 
-fn search_text_entries(conn: &Connection, query: &str) -> Result<Vec<TextEntry>> {
+fn search_text_entries(
+    conn: &Connection,
+    query: &str,
+    cursor: Option<i64>,
+    limit: u32,
+) -> Result<(Vec<TextEntry>, Option<i64>)> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
-        return get_text_entries(conn);
+        return get_text_entries(conn, cursor, limit);
     }
 
     if trimmed.len() < 3 {
-        return search_with_like(conn, trimmed);
+        return search_with_like(conn, trimmed, cursor, limit);
     }
 
     let fts_query = to_fts_query(trimmed);
-    let mut stmt = conn.prepare(
-        "SELECT ce.id, te.content, ce.created_at
-        FROM clipboard_entries ce
-        JOIN text_entries te ON ce.id = te.entry_id
-        JOIN text_entries_fts fts ON te.entry_id = fts.rowid
-        WHERE text_entries_fts MATCH ?1
-        ORDER BY bm25(text_entries_fts), ce.created_at DESC",
-    )?;
-    let rows = stmt.query_map([fts_query], |row| {
-        Ok(TextEntry {
-            id: row.get(0)?,
-            content: row.get(1)?,
-            created_at: row.get(2)?,
-        })
-    })?;
-
     let mut entries = Vec::new();
-    for row in rows {
-        entries.push(row?);
+    let limit_plus_one = i64::from(limit + 1);
+
+    match cursor {
+        Some(cursor) => {
+            let mut stmt = conn.prepare(
+                "SELECT ce.id, te.content, ce.created_at
+                FROM clipboard_entries ce
+                JOIN text_entries te ON ce.id = te.entry_id
+                JOIN text_entries_fts fts ON te.entry_id = fts.rowid
+                WHERE text_entries_fts MATCH ?1 AND ce.created_at < ?2
+                ORDER BY bm25(text_entries_fts), ce.created_at DESC
+                LIMIT ?3",
+            )?;
+            let rows = stmt.query_map(params![fts_query, cursor, limit_plus_one], |row| {
+                Ok(TextEntry {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?;
+            for row in rows {
+                entries.push(row?);
+            }
+        }
+        None => {
+            let mut stmt = conn.prepare(
+                "SELECT ce.id, te.content, ce.created_at
+                FROM clipboard_entries ce
+                JOIN text_entries te ON ce.id = te.entry_id
+                JOIN text_entries_fts fts ON te.entry_id = fts.rowid
+                WHERE text_entries_fts MATCH ?1
+                ORDER BY bm25(text_entries_fts), ce.created_at DESC
+                LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![fts_query, limit_plus_one], |row| {
+                Ok(TextEntry {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?;
+            for row in rows {
+                entries.push(row?);
+            }
+        }
     }
 
     if entries.is_empty() {
-        return search_with_like(conn, trimmed);
+        return search_with_like(conn, trimmed, cursor, limit);
     }
 
-    Ok(entries)
+    if entries.len() > limit as usize {
+        entries.truncate(limit as usize);
+        let next_cursor = entries.last().map(|entry| entry.created_at);
+        Ok((entries, next_cursor))
+    } else {
+        Ok((entries, None))
+    }
 }
 
-fn search_with_like(conn: &Connection, query: &str) -> Result<Vec<TextEntry>> {
+fn search_with_like(
+    conn: &Connection,
+    query: &str,
+    cursor: Option<i64>,
+    limit: u32,
+) -> Result<(Vec<TextEntry>, Option<i64>)> {
     let like_query = format!("%{query}%");
-    let mut stmt = conn.prepare(
-        "SELECT ce.id, te.content, ce.created_at
-        FROM clipboard_entries ce
-        JOIN text_entries te ON ce.id = te.entry_id
-        WHERE te.content LIKE ?1
-        ORDER BY ce.created_at DESC",
-    )?;
-    let rows = stmt.query_map([like_query], |row| {
-        Ok(TextEntry {
-            id: row.get(0)?,
-            content: row.get(1)?,
-            created_at: row.get(2)?,
-        })
-    })?;
-
     let mut entries = Vec::new();
-    for row in rows {
-        entries.push(row?);
+    let limit_plus_one = i64::from(limit + 1);
+
+    match cursor {
+        Some(cursor) => {
+            let mut stmt = conn.prepare(
+                "SELECT ce.id, te.content, ce.created_at
+                FROM clipboard_entries ce
+                JOIN text_entries te ON ce.id = te.entry_id
+                WHERE te.content LIKE ?1 AND ce.created_at < ?2
+                ORDER BY ce.created_at DESC
+                LIMIT ?3",
+            )?;
+            let rows = stmt.query_map(params![like_query, cursor, limit_plus_one], |row| {
+                Ok(TextEntry {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?;
+            for row in rows {
+                entries.push(row?);
+            }
+        }
+        None => {
+            let mut stmt = conn.prepare(
+                "SELECT ce.id, te.content, ce.created_at
+                FROM clipboard_entries ce
+                JOIN text_entries te ON ce.id = te.entry_id
+                WHERE te.content LIKE ?1
+                ORDER BY ce.created_at DESC
+                LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![like_query, limit_plus_one], |row| {
+                Ok(TextEntry {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })?;
+            for row in rows {
+                entries.push(row?);
+            }
+        }
     }
-    Ok(entries)
+
+    if entries.len() > limit as usize {
+        entries.truncate(limit as usize);
+        let next_cursor = entries.last().map(|entry| entry.created_at);
+        Ok((entries, next_cursor))
+    } else {
+        Ok((entries, None))
+    }
 }
 
 fn to_fts_query(query: &str) -> String {

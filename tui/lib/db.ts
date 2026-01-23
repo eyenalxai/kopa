@@ -6,14 +6,22 @@ import { Effect, Schema } from "effect"
 
 export const socketPath = join(homedir(), ".local/share/kopa/kopa.sock")
 
+type PaginationParams = {
+  readonly cursor?: number
+  readonly limit?: number
+}
+
 type Request =
   | {
       readonly type: "list_entries"
+      readonly data?: PaginationParams
     }
   | {
       readonly type: "search_entries"
       readonly data: {
         readonly query: string
+        readonly cursor?: number
+        readonly limit?: number
       }
     }
 
@@ -25,10 +33,16 @@ const TextEntryRowSchema = Schema.Struct({
 
 export type TextEntryRow = Schema.Schema.Type<typeof TextEntryRowSchema>
 
+export type EntriesPage = {
+  readonly entries: ReadonlyArray<TextEntryRow>
+  readonly nextCursor: number | null
+}
+
 const EntriesResponseSchema = Schema.Struct({
   type: Schema.Literal("entries"),
   data: Schema.Struct({
     entries: Schema.Array(TextEntryRowSchema),
+    next_cursor: Schema.NullOr(Schema.Number),
   }),
 })
 
@@ -48,12 +62,15 @@ const decodeResponse = (payload: string) =>
     Effect.flatMap((response) =>
       response.type === "error"
         ? Effect.fail(new Error(response.data.message))
-        : Effect.succeed(response.data.entries),
+        : Effect.succeed({
+            entries: response.data.entries,
+            nextCursor: response.data.next_cursor,
+          }),
     ),
   )
 
 const sendRequest = (request: Request) =>
-  Effect.async<ReadonlyArray<TextEntryRow>, Error>((resume) => {
+  Effect.async<EntriesPage, Error>((resume) => {
     const socket = connect({ path: socketPath })
     let buffer = ""
     let settled = false
@@ -98,7 +115,11 @@ const sendRequest = (request: Request) =>
     })
   })
 
-export const getTextEntries = () => sendRequest({ type: "list_entries" })
+export const getTextEntries = (cursor?: number, limit?: number) =>
+  sendRequest({
+    type: "list_entries",
+    data: { cursor, limit },
+  })
 
-export const searchTextEntries = (query: string) =>
-  sendRequest({ type: "search_entries", data: { query } })
+export const searchTextEntries = (query: string, cursor?: number, limit?: number) =>
+  sendRequest({ type: "search_entries", data: { query, cursor, limit } })
