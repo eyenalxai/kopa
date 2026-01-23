@@ -5,9 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Effect } from "effect"
 
 import { App } from "./components/app"
-import { ExitProvider } from "./lib/exit"
 import { RootBox } from "./components/root-box"
 import { Toast, ToastProvider } from "./components/toast"
+import { ExitProvider } from "./lib/exit"
 import { ThemeProvider } from "./lib/theme"
 
 const queryClient = new QueryClient()

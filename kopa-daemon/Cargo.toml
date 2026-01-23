@@ -8,6 +8,9 @@ anyhow = "1.0.100"
 directories = "6.0.0"
 rand = "0.9.2"
 rusqlite = "0.38.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"] }
 wl-clipboard-rs = "0.9.3"
 
 

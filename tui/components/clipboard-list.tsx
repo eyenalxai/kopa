@@ -1,5 +1,4 @@
 import type { TextEntryRow } from "../lib/db"
-
 import { useKeyboard } from "@opentui/react"
 import { useMemo, useState } from "react"
 
@@ -43,11 +42,7 @@ export const ClipboardList = ({ entries, searchQuery, onSearch }: ClipboardListP
 
   return (
     <box flexDirection="column" border borderColor={theme.border} padding={1} gap={1}>
-      <SearchInput
-        value={searchQuery}
-        focused={focusedElement === "input"}
-        onInput={onSearch}
-      />
+      <SearchInput value={searchQuery} focused={focusedElement === "input"} onInput={onSearch} />
       <select
         focused={focusedElement === "list"}
         options={options}

@@ -1,6 +1,7 @@
 import { appendFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
+
 import { Effect, Logger } from "effect"
 
 const logPath = join(homedir(), ".local/share/kopa/kopa.log")

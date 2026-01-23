@@ -4,6 +4,7 @@ use anyhow::Result;
 use wl_clipboard_rs::paste::{ClipboardType, Error as PasteError, MimeType, Seat, get_contents};
 
 mod db;
+mod ipc;
 
 fn read_clipboard_text() -> Result<Option<Vec<u8>>> {
     match get_contents(ClipboardType::Regular, Seat::Unspecified, MimeType::Text) {
@@ -17,7 +18,7 @@ fn read_clipboard_text() -> Result<Option<Vec<u8>>> {
     }
 }
 
-fn main() -> Result<()> {
+fn run_clipboard_monitor() -> Result<()> {
     let mut last_contents: Option<Vec<u8>> = None;
     let mut conn = db::init_db()?;
 
@@ -41,4 +42,15 @@ fn main() -> Result<()> {
 
         thread::sleep(Duration::from_millis(300));
     }
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<()> {
+    thread::spawn(|| {
+        if let Err(error) = run_clipboard_monitor() {
+            eprintln!("Clipboard monitor error: {error:?}");
+        }
+    });
+
+    ipc::run_server().await
 }
