@@ -3,10 +3,13 @@ import { access } from "node:fs/promises"
 import { BunContext, BunRuntime } from "@effect/platform-bun"
 import { createCliRenderer } from "@opentui/core"
 import { createRoot } from "@opentui/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Effect } from "effect"
 
 import { App } from "./app"
 import { dbPath } from "./db"
+
+const queryClient = new QueryClient()
 
 const ensureDb = Effect.tryPromise({
   try: () => access(dbPath),
@@ -27,7 +30,11 @@ const run = Effect.matchEffect(ensureDb, {
       Effect.andThen((renderer) =>
         Effect.try({
           try: () => {
-            createRoot(renderer).render(<App />)
+            createRoot(renderer).render(
+              <QueryClientProvider client={queryClient}>
+                <App />
+              </QueryClientProvider>,
+            )
           },
           catch: (error) =>
             new Error(typeof error === "string" ? error : "Failed to render TUI application"),

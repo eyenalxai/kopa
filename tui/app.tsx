@@ -1,54 +1,43 @@
 import { TextAttributes } from "@opentui/core"
+import { useQuery } from "@tanstack/react-query"
 import { Effect } from "effect"
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 
-import { SqlLive, dbPath, getTextEntries, type TextEntryRow } from "./db"
+import { dbPath, getTextEntries, SqlLive, type TextEntryRow } from "./db"
 
 export const App = () => {
-  const [entries, setEntries] = useState<ReadonlyArray<TextEntryRow>>([])
-  const [error, setError] = useState<string | null>(null)
+  const limit = 20
 
-  useEffect(() => {
-    let cancelled = false
-
-    const formatError = (error: unknown) => {
-      if (typeof error === "string") {
-        return error
-      }
-
-      if (error instanceof Error) {
-        return error.message
-      }
-
-      const serialized = JSON.stringify(error)
-      return serialized === undefined ? "Unknown error" : serialized
+  const { data, error, isLoading } = useQuery<ReadonlyArray<TextEntryRow>>({
+    queryKey: ["textEntries", limit],
+    queryFn: () => Effect.runPromise(getTextEntries(limit).pipe(Effect.provide(SqlLive))),
+  })
+  const entries = data ?? []
+  const errorMessage = useMemo(() => {
+    if (!error) {
+      return null
     }
 
-    Effect.runPromise(
-      getTextEntries(20)
-        .pipe(Effect.provide(SqlLive))
-        .pipe(Effect.tapError((error) => Effect.logError(formatError(error)))),
-    )
-      .then((rows) => {
-        if (!cancelled) {
-          setEntries(rows)
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const raw = err instanceof Error ? err.message : String(err)
-          const isCantOpen = raw.includes("SQLITE_CANTOPEN")
-          const message = isCantOpen
-            ? `Unable to open kopa db at ${dbPath}.`
-            : `Failed to load clipboard entries: ${raw}`
-          setError(message)
-        }
-      })
-
-    return () => {
-      cancelled = true
+    if (typeof error === "string") {
+      return error
     }
-  }, [])
+
+    if (error instanceof Error) {
+      return error.message
+    }
+
+    const serialized = JSON.stringify(error)
+    return serialized === undefined ? "Unknown error" : serialized
+  }, [error])
+  const displayError = useMemo(() => {
+    if (!errorMessage) {
+      return null
+    }
+
+    return errorMessage.includes("SQLITE_CANTOPEN")
+      ? `Unable to open kopa db at ${dbPath}.`
+      : `Failed to load clipboard entries: ${errorMessage}`
+  }, [errorMessage])
 
   return (
     <box flexDirection="column" alignItems="stretch" flexGrow={1} padding={1}>
@@ -56,8 +45,10 @@ export const App = () => {
         <ascii-font font="tiny" text="OpenTUI" />
         <text attributes={TextAttributes.DIM}>What will you build?</text>
       </box>
-      {error ? (
-        <text attributes={TextAttributes.DIM}>{error}</text>
+      {displayError ? (
+        <text attributes={TextAttributes.DIM}>{displayError}</text>
+      ) : isLoading ? (
+        <text attributes={TextAttributes.DIM}>Loading clipboard entries...</text>
       ) : entries.length === 0 ? (
         <text attributes={TextAttributes.DIM}>No clipboard entries yet.</text>
       ) : (
