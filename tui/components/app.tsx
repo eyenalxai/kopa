@@ -59,7 +59,7 @@ export const App = () => {
   }
 
   if (isPending) {
-    return <text>Loading clipboard entries...</text>
+    return null
   }
 
   if (entries.length === 0) {
