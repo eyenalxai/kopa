@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Cause, Effect } from "effect"
 
 import { dbPath, getTextEntries, SqlLive, type TextEntryRow } from "./db"
+import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
 
 export const App = () => {
@@ -40,11 +41,5 @@ export const App = () => {
     return <text>No clipboard entries yet.</text>
   }
 
-  return (
-    <box flexDirection="column">
-      {entries.map((entry) => (
-        <text key={entry.id}>{entry.content}</text>
-      ))}
-    </box>
-  )
+  return <ClipboardList entries={entries} />
 }
