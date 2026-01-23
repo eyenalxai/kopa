@@ -11,10 +11,12 @@
   "dependencies": {
     "@opentui/core": "^0.1.74",
     "@opentui/react": "^0.1.74",
-    "react": "^19.2.3"
+    "react": "^19.2.3",
+    "yargs": "^18.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/yargs": "^17.0.35",
     "oxfmt": "^0.26.0",
     "oxlint": "^1.41.0",
     "oxlint-tsgolint": "^0.11.1"
