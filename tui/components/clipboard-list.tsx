@@ -29,6 +29,7 @@ export const ClipboardList = ({
   const theme = useTheme()
   const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
+  const hasEntries = entries.length > 0
   const options = useMemo(
     () =>
       entries.map((entry) => ({
@@ -53,47 +54,57 @@ export const ClipboardList = ({
   return (
     <box flexDirection="column" border borderColor={theme.border} padding={1} gap={1}>
       <SearchInput value={searchQuery} focused={focusedElement === "input"} onInput={onSearch} />
-      <select
-        focused={focusedElement === "list"}
-        options={options}
-        flexGrow={1}
-        minHeight={5}
-        width="100%"
-        height="100%"
-        backgroundColor={theme.background}
-        focusedBackgroundColor={theme.background}
-        textColor={theme.text}
-        focusedTextColor={theme.text}
-        selectedBackgroundColor={theme.borderSubtle}
-        selectedTextColor={theme.text}
-        descriptionColor={theme.textMuted}
-        selectedDescriptionColor={theme.text}
-        showDescription
-        showScrollIndicator
-        wrapSelection
-        onChange={(index) => {
-          if (entries.length === 0) {
-            return
-          }
-          const threshold = 5
-          if (hasMore && !isLoadingMore && index >= entries.length - threshold) {
-            onLoadMore()
-          }
-        }}
-        onSelect={(_, option) => {
-          if (!option || typeof option.value !== "number") {
-            return
-          }
-          const entry = entriesById.get(option.value)
-          if (!entry) {
-            return
-          }
-          void copy(entry.content).catch((copyError) => {
-            const message = copyError instanceof Error ? copyError.message : "Failed to copy entry"
-            logError(message)
-          })
-        }}
-      />
+      {hasEntries ? (
+        <select
+          focused={focusedElement === "list"}
+          options={options}
+          flexGrow={1}
+          minHeight={5}
+          width="100%"
+          height="100%"
+          backgroundColor={theme.background}
+          focusedBackgroundColor={theme.background}
+          textColor={theme.text}
+          focusedTextColor={theme.text}
+          selectedBackgroundColor={theme.borderSubtle}
+          selectedTextColor={theme.text}
+          descriptionColor={theme.textMuted}
+          selectedDescriptionColor={theme.text}
+          showDescription
+          showScrollIndicator
+          wrapSelection
+          onChange={(index) => {
+            const threshold = 5
+            if (hasMore && !isLoadingMore && index >= entries.length - threshold) {
+              onLoadMore()
+            }
+          }}
+          onSelect={(_, option) => {
+            if (!option || typeof option.value !== "number") {
+              return
+            }
+            const entry = entriesById.get(option.value)
+            if (!entry) {
+              return
+            }
+            void copy(entry.content).catch((copyError) => {
+              const message = copyError instanceof Error ? copyError.message : "Failed to copy entry"
+              logError(message)
+            })
+          }}
+        />
+      ) : (
+        <box
+          flexGrow={1}
+          minHeight={5}
+          width="100%"
+          height="100%"
+          backgroundColor={theme.background}
+          padding={1}
+        >
+          <text fg={theme.textMuted}>No results</text>
+        </box>
+      )}
     </box>
   )
 }
