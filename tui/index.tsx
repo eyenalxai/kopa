@@ -3,7 +3,7 @@ import { createCliRenderer } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 
-import { App } from "./tui/app"
+import { App } from "./app"
 
 const run = Effect.tryPromise({
   try: () => createCliRenderer(),

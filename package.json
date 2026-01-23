@@ -3,12 +3,12 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "module": "src/index.tsx",
+  "module": "tui/index.tsx",
   "scripts": {
     "lint": "oxlint --type-aware --fix",
     "format": "oxfmt",
-    "dev-watch": "bun run --watch src/index.tsx",
-    "dev": "bun run src/index.tsx"
+    "dev-watch": "bun run --watch tui/index.tsx",
+    "dev": "bun run tui/index.tsx"
   },
   "dependencies": {
     "@effect/platform-bun": "^0.68.0",
