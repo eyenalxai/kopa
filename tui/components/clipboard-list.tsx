@@ -26,6 +26,7 @@ export const ClipboardList = ({ entries }: ClipboardListProps) => {
         flexGrow={1}
         minHeight={5}
         width="100%"
+        height="100%"
         backgroundColor={theme.background}
         focusedBackgroundColor={theme.background}
         textColor={theme.text}

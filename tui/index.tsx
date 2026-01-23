@@ -7,6 +7,7 @@ import { Effect } from "effect"
 import { App } from "./components/app"
 import { ExitProvider } from "./lib/exit"
 import { RootBox } from "./components/root-box"
+import { Toast, ToastProvider } from "./components/toast"
 import { ThemeProvider } from "./lib/theme"
 
 const queryClient = new QueryClient()
@@ -25,11 +26,14 @@ const run = Effect.tryPromise({
         createRoot(renderer).render(
           <QueryClientProvider client={queryClient}>
             <ExitProvider>
-              <ThemeProvider>
-                <RootBox>
-                  <App />
-                </RootBox>
-              </ThemeProvider>
+              <ToastProvider>
+                <ThemeProvider>
+                  <RootBox>
+                    <App />
+                    <Toast />
+                  </RootBox>
+                </ThemeProvider>
+              </ToastProvider>
             </ExitProvider>
           </QueryClientProvider>,
         )
