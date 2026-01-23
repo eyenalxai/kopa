@@ -1,8 +1,8 @@
 import type { TextEntryRow } from "../lib/db"
-import { Effect } from "effect"
 
 import { copy } from "../lib/clipboard"
 import { formatTimestamp, truncateContent } from "../lib/clipboard-list-utils"
+import { logError } from "../lib/logger"
 import { useTheme } from "../lib/theme"
 
 type ClipboardListProps = {
@@ -47,7 +47,7 @@ export const ClipboardList = ({ entries }: ClipboardListProps) => {
           }
           void copy(entry.content).catch((copyError) => {
             const message = copyError instanceof Error ? copyError.message : "Failed to copy entry"
-            void Effect.runPromise(Effect.logError(message)).catch(() => {})
+            logError(message)
           })
         }}
       />

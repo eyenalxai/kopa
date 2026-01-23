@@ -1,9 +1,9 @@
 import { useKeyboard, useRenderer } from "@opentui/react"
-import { Effect } from "effect"
 import type { ReactNode } from "react"
 
 import { copy } from "../lib/clipboard"
 import { useExit } from "../lib/exit"
+import { logError } from "../lib/logger"
 
 type RootBoxProps = {
   readonly children: ReactNode
@@ -17,7 +17,7 @@ export const RootBox = ({ children }: RootBoxProps) => {
     if (text && text.length > 0) {
       await copy(text).catch((copyError) => {
         const message = copyError instanceof Error ? copyError.message : "Failed to copy selection"
-        void Effect.runPromise(Effect.logError(message)).catch(() => {})
+        logError(message)
       })
       renderer.clearSelection()
     }
