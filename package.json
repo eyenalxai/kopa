@@ -5,6 +5,7 @@
   "type": "module",
   "module": "tui/index.tsx",
   "scripts": {
+    "build": "bun run build.ts",
     "lint": "oxlint --type-aware --fix",
     "format": "oxfmt",
     "dev:watch": "bun run --watch tui/index.tsx",
