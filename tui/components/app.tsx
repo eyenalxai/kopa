@@ -1,33 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
 import { Cause, Effect } from "effect"
-import { useEffect } from "react"
 
 import { dbPath, getTextEntries, SqlLive, type TextEntryRow } from "../lib/db"
-import { logError } from "../lib/logger"
 
 import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
-import { useToast } from "./toast"
 
 export const App = () => {
   const limit = 20
-  const { show } = useToast()
-
-  useEffect(() => {
-    const messages: ReadonlyArray<string> = [
-      "Ready to capture new clipboard entries.",
-      "Tip: Click to copy from history.",
-      "Synced clipboard is up and running.",
-      "Search your clipboard with the list view.",
-    ]
-
-    const message =
-      messages[Math.floor(Math.random() * messages.length)] ??
-      "Ready to capture new clipboard entries."
-    const variant = "error"
-    show({ title: "error", message: "test toast test toast test toast test toast", variant })
-    logError(message)
-  }, [show])
 
   const {
     data: entries,
