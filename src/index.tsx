@@ -4,6 +4,7 @@ import { createCliRenderer } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 
+import packageJson from "../package.json"
 import { App } from "./tui/app"
 
 const daemon = Options.boolean("daemon").pipe(
@@ -50,7 +51,7 @@ const command = Command.make("kopa", { daemon }, ({ daemon }) =>
 
 const cli = Command.run(command, {
   name: "kopa",
-  version: "0.0.0",
+  version: packageJson.version,
 })
 
 const run = Effect.try({
