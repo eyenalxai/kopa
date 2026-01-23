@@ -1,5 +1,9 @@
 import type { TextEntryRow } from "../lib/db"
 
+import { useKeyboard } from "@opentui/react"
+import { Searcher } from "fast-fuzzy"
+import { useMemo, useState } from "react"
+
 import { copy } from "../lib/clipboard"
 import { formatTimestamp, truncateContent } from "../lib/clipboard-list-utils"
 import { logError } from "../lib/logger"
@@ -11,17 +15,52 @@ type ClipboardListProps = {
 
 export const ClipboardList = ({ entries }: ClipboardListProps) => {
   const theme = useTheme()
+  const [searchQuery, setSearchQuery] = useState("")
+  const [focusedElement, setFocusedElement] = useState<"input" | "list">("list")
+  const searcher = useMemo(
+    () =>
+      new Searcher(Array.from(entries), {
+        keySelector: (entry) => entry.content,
+      }),
+    [entries],
+  )
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim()
+    if (!query) {
+      return entries
+    }
+    return searcher.search(query)
+  }, [entries, searchQuery, searcher])
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]))
-  const options = entries.map((entry) => ({
+  const options = filteredEntries.map((entry) => ({
     name: truncateContent(entry.content),
     description: formatTimestamp(entry.created_at),
     value: entry.id,
   }))
 
+  useKeyboard((key) => {
+    if (key.name === "tab") {
+      setFocusedElement((prev) => (prev === "input" ? "list" : "input"))
+    } else if (key.name === "escape") {
+      if (searchQuery) {
+        setSearchQuery("")
+      }
+      setFocusedElement("list")
+    }
+  })
+
   return (
     <box flexDirection="column" border borderColor={theme.border} padding={1} gap={1}>
+      <box border borderColor={theme.borderSubtle} padding={1}>
+        <input
+          placeholder="Search clipboard..."
+          value={searchQuery}
+          focused={focusedElement === "input"}
+          onInput={setSearchQuery}
+        />
+      </box>
       <select
-        focused
+        focused={focusedElement === "list"}
         options={options}
         flexGrow={1}
         minHeight={5}
