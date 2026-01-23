@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core"
+import { MouseEvent, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import {
   createContext,
@@ -32,6 +32,7 @@ type ToastState = {
 type ToastContextValue = {
   show: (options: ToastOptions) => void
   error: (err: unknown) => void
+  dismiss: () => void
   currentToast: ToastState | null
 }
 
@@ -81,29 +82,41 @@ export const ToastProvider = ({ children }: { readonly children: ReactNode }) =>
 
   const show = useCallback(
     (options: ToastOptions) => {
-    const { toast, duration } = normalizeToastOptions(options)
-    setCurrentToast(toast)
-    clearTimer()
-    if (duration > 0) {
-      timeoutRef.current = setTimeout(() => {
-        setCurrentToast(null)
-        timeoutRef.current = null
-      }, duration)
-    }
+      const { toast, duration } = normalizeToastOptions(options)
+      setCurrentToast(toast)
+      clearTimer()
+      if (duration > 0) {
+        timeoutRef.current = setTimeout(() => {
+          setCurrentToast(null)
+          timeoutRef.current = null
+        }, duration)
+      }
     },
     [clearTimer],
   )
 
   const error = useCallback(
     (err: unknown) => {
-    const message =
-      err instanceof Error ? err.message : typeof err === "string" ? err : "An unknown error has occurred"
-    show({ variant: "error", message })
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "An unknown error has occurred"
+      show({ variant: "error", message })
     },
     [show],
   )
 
-  const value = useMemo<ToastContextValue>(() => ({ show, error, currentToast }), [show, error, currentToast])
+  const dismiss = useCallback(() => {
+    clearTimer()
+    setCurrentToast(null)
+  }, [clearTimer])
+
+  const value = useMemo<ToastContextValue>(
+    () => ({ show, error, dismiss, currentToast }),
+    [show, error, dismiss, currentToast],
+  )
 
   return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>
 }
@@ -117,9 +130,17 @@ export const useToast = () => {
 }
 
 export const Toast = () => {
-  const { currentToast } = useToast()
+  const { currentToast, dismiss } = useToast()
   const theme = useTheme()
   const dimensions = useTerminalDimensions()
+  const handleMouseDown = useCallback(
+    (event: MouseEvent) => {
+      if (event.button === 2) {
+        dismiss()
+      }
+    },
+    [dismiss],
+  )
 
   if (!currentToast) {
     return null
@@ -145,6 +166,7 @@ export const Toast = () => {
       borderColor={borderColor}
       border={SplitBorder.border}
       customBorderChars={SplitBorder.customBorderChars}
+      onMouseDown={handleMouseDown}
     >
       {currentToast.title ? (
         <text attributes={TextAttributes.BOLD} marginBottom={1} fg={theme.text}>
