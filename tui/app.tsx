@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Cause, Effect } from "effect"
 
 import { dbPath, getTextEntries, SqlLive, type TextEntryRow } from "./db"
+import { ContentError } from "./error"
 
 export const App = () => {
   const limit = 20
@@ -28,7 +29,7 @@ export const App = () => {
       ? `Unable to open kopa db at ${dbPath}.`
       : `Failed to load clipboard entries: ${errorMessage}`
 
-    return <text>{displayError}</text>
+    return <ContentError title="Error loading clipboard entries">{displayError}</ContentError>
   }
 
   if (isPending) {
