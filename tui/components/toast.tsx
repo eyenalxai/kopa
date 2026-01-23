@@ -131,6 +131,7 @@ export const Toast = () => {
   return (
     <box
       position="absolute"
+      zIndex={1000}
       justifyContent="center"
       alignItems="flex-start"
       top={2}
