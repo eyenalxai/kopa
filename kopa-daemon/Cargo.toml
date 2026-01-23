@@ -1,0 +1,22 @@
+[package]
+name = "kopa-daemon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+unwrap_or_default = "deny"
+get_unwrap = "deny"
+map_unwrap_or = "deny"
+unnecessary_unwrap = "deny"
+mem_forget = "deny"
+only_used_in_recursion = "deny"
+allow_attributes = "deny"
+clone_on_ref_ptr = "deny"
+mutex_atomic = "deny"
+rc_mutex = "deny"
