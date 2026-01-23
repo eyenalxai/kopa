@@ -37,6 +37,23 @@ pub fn init_db() -> Result<Connection> {
             content BLOB NOT NULL,
             mime_type TEXT NOT NULL
         );
+        CREATE VIRTUAL TABLE IF NOT EXISTS text_entries_fts USING fts5(
+            content,
+            content='text_entries',
+            content_rowid='entry_id'
+        );
+        CREATE TRIGGER IF NOT EXISTS text_entries_ai
+            AFTER INSERT ON text_entries
+        BEGIN
+            INSERT INTO text_entries_fts(rowid, content)
+            VALUES (new.entry_id, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS text_entries_ad
+            AFTER DELETE ON text_entries
+        BEGIN
+            INSERT INTO text_entries_fts(text_entries_fts, rowid, content)
+            VALUES ('delete', old.entry_id, old.content);
+        END;
         CREATE INDEX IF NOT EXISTS idx_created_at
             ON clipboard_entries(created_at DESC);",
     )?;

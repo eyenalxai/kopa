@@ -1,7 +1,6 @@
 import type { TextEntryRow } from "../lib/db"
 
 import { useKeyboard } from "@opentui/react"
-import { Searcher } from "fast-fuzzy"
 import { useMemo, useState } from "react"
 
 import { copy } from "../lib/clipboard"
@@ -13,39 +12,30 @@ import { SearchInput } from "./search-input"
 
 type ClipboardListProps = {
   readonly entries: ReadonlyArray<TextEntryRow>
+  readonly searchQuery: string
+  readonly onSearch: (query: string) => void
 }
 
-export const ClipboardList = ({ entries }: ClipboardListProps) => {
+export const ClipboardList = ({ entries, searchQuery, onSearch }: ClipboardListProps) => {
   const theme = useTheme()
-  const [searchQuery, setSearchQuery] = useState("")
   const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
-  const searcher = useMemo(
+  const entriesById = new Map(entries.map((entry) => [entry.id, entry]))
+  const options = useMemo(
     () =>
-      new Searcher(Array.from(entries), {
-        keySelector: (entry) => entry.content,
-      }),
+      entries.map((entry) => ({
+        name: truncateContent(entry.content),
+        description: formatTimestamp(entry.created_at),
+        value: entry.id,
+      })),
     [entries],
   )
-  const filteredEntries = useMemo(() => {
-    const query = searchQuery.trim()
-    if (!query) {
-      return entries
-    }
-    return searcher.search(query)
-  }, [entries, searchQuery, searcher])
-  const entriesById = new Map(entries.map((entry) => [entry.id, entry]))
-  const options = filteredEntries.map((entry) => ({
-    name: truncateContent(entry.content),
-    description: formatTimestamp(entry.created_at),
-    value: entry.id,
-  }))
 
   useKeyboard((key) => {
     if (key.name === "tab") {
       setFocusedElement((prev) => (prev === "input" ? "list" : "input"))
     } else if (key.name === "escape") {
       if (searchQuery) {
-        setSearchQuery("")
+        onSearch("")
       }
       setFocusedElement("list")
     }
@@ -56,7 +46,7 @@ export const ClipboardList = ({ entries }: ClipboardListProps) => {
       <SearchInput
         value={searchQuery}
         focused={focusedElement === "input"}
-        onInput={setSearchQuery}
+        onInput={onSearch}
       />
       <select
         focused={focusedElement === "list"}
