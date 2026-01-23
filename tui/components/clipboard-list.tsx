@@ -1,9 +1,9 @@
-import type { TextEntryRow } from "./db"
+import type { TextEntryRow } from "../lib/db"
 import { Effect } from "effect"
 
-import { copy } from "./clipboard"
-import { formatTimestamp, truncateContent } from "./clipboard-list-utils"
-import { useTheme } from "./theme"
+import { copy } from "../lib/clipboard"
+import { formatTimestamp, truncateContent } from "../lib/clipboard-list-utils"
+import { useTheme } from "../lib/theme"
 
 type ClipboardListProps = {
   readonly entries: ReadonlyArray<TextEntryRow>

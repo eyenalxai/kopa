@@ -4,10 +4,10 @@ import { createRoot } from "@opentui/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Effect } from "effect"
 
-import { App } from "./app"
-import { ExitProvider } from "./exit"
-import { RootBox } from "./root-box"
-import { ThemeProvider } from "./theme"
+import { App } from "./components/app"
+import { ExitProvider } from "./lib/exit"
+import { RootBox } from "./components/root-box"
+import { ThemeProvider } from "./lib/theme"
 
 const queryClient = new QueryClient()
 

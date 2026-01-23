@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Cause, Effect } from "effect"
 
-import { dbPath, getTextEntries, SqlLive, type TextEntryRow } from "./db"
+import { dbPath, getTextEntries, SqlLive, type TextEntryRow } from "../lib/db"
 import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
 
