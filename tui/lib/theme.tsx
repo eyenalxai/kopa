@@ -114,13 +114,15 @@ const fallbackTheme = buildTheme({
 export const ThemeProvider = ({ children }: { readonly children: ReactNode }) => {
   const renderer = useRenderer()
   const [theme, setTheme] = useState<Theme>(fallbackTheme)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     let active = true
     renderer
       .getPalette({ size: 16 })
       .then((colors) => {
-        if (!active || !colors.palette[0]) return
+        if (!active) return
+        if (!colors.palette[0]) return
         setTheme(
           buildTheme({
             palette: colors.palette,
@@ -130,12 +132,21 @@ export const ThemeProvider = ({ children }: { readonly children: ReactNode }) =>
         )
       })
       .catch(() => {})
+      .finally(() => {
+        if (active) {
+          setIsLoading(false)
+        }
+      })
     return () => {
       active = false
     }
   }, [renderer])
 
   const value = useMemo(() => theme, [theme])
+
+  if (isLoading) {
+    return null
+  }
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
