@@ -1,0 +1,25 @@
+{
+  "name": "kopa",
+  "private": true,
+  "type": "module",
+  "module": "src/index.tsx",
+  "scripts": {
+    "lint": "oxlint --type-aware --fix",
+    "format": "oxfmt",
+    "dev": "bun run --watch src/index.tsx"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.74",
+    "@opentui/react": "^0.1.74",
+    "react": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxfmt": "^0.26.0",
+    "oxlint": "^1.41.0",
+    "oxlint-tsgolint": "^0.11.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
