@@ -1,7 +1,8 @@
 import type { TextEntryRow } from "../services/daemon"
+import type { SelectRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import { Effect } from "effect"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 
 import { useTheme } from "../providers/theme"
 import { useToast } from "../providers/toast"
@@ -30,6 +31,7 @@ export const ClipboardList = ({
 }: ClipboardListProps) => {
   const theme = useTheme()
   const toast = useToast()
+  const selectRef = useRef<SelectRenderable>(null)
   const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
   const hasEntries = entries.length > 0
@@ -51,6 +53,16 @@ export const ClipboardList = ({
         onSearch("")
       }
       setFocusedElement("list")
+    } else if (focusedElement === "list" && selectRef.current) {
+      if (key.name === "pageup") {
+        selectRef.current.moveUp(10)
+      } else if (key.name === "pagedown") {
+        selectRef.current.moveDown(10)
+      } else if (key.name === "home") {
+        selectRef.current.setSelectedIndex(0)
+      } else if (key.name === "end") {
+        selectRef.current.setSelectedIndex(entries.length - 1)
+      }
     }
   })
 
@@ -59,6 +71,7 @@ export const ClipboardList = ({
       <SearchInput value={searchQuery} focused={focusedElement === "input"} onInput={onSearch} />
       {hasEntries ? (
         <select
+          ref={selectRef}
           focused={focusedElement === "list"}
           options={options}
           width="100%"
