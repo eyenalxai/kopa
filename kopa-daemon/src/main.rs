@@ -1,29 +1,17 @@
-use std::{io::Read, thread, time::Duration};
+use std::{thread, time::Duration};
 
 use anyhow::Result;
-use wl_clipboard_rs::paste::{ClipboardType, Error as PasteError, MimeType, Seat, get_contents};
 
+mod clipboard;
 mod db;
 mod ipc;
-
-fn read_clipboard_text() -> Result<Option<Vec<u8>>> {
-    match get_contents(ClipboardType::Regular, Seat::Unspecified, MimeType::Text) {
-        Ok((mut pipe, _)) => {
-            let mut contents = Vec::new();
-            pipe.read_to_end(&mut contents)?;
-            Ok(Some(contents))
-        }
-        Err(PasteError::NoSeats | PasteError::ClipboardEmpty | PasteError::NoMimeType) => Ok(None),
-        Err(err) => Err(anyhow::Error::new(err)),
-    }
-}
 
 fn run_clipboard_monitor() -> Result<()> {
     let mut last_contents: Option<Vec<u8>> = None;
     let mut conn = db::init_db()?;
 
     loop {
-        let contents = read_clipboard_text()?;
+        let contents = clipboard::read_text()?;
         match contents {
             None => {
                 last_contents = None;
