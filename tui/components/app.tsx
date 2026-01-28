@@ -43,7 +43,7 @@ export const App = () => {
   }
 
   if (isPending && !data) {
-    return <text>Loading clipboard entries...</text>
+    return null
   }
 
   return (
