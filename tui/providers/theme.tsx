@@ -1,8 +1,40 @@
+import { homedir } from "node:os"
+import { join } from "node:path"
+
+import { FileSystem } from "@effect/platform"
+import { BunContext } from "@effect/platform-bun"
 import { useRenderer } from "@opentui/react"
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { Effect, Option, Schema } from "effect"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 
 import { logError } from "../services/logger"
 import { ANSI_FALLBACK, luminance, mix, normalizeHex } from "../utils/colors"
+
+const cachePath = join(homedir(), ".local/share/kopa/theme-cache.json")
+const cacheDir = join(homedir(), ".local/share/kopa")
+
+const PaletteInputSchema = Schema.Struct({
+  palette: Schema.Array(Schema.NullOr(Schema.String)),
+  defaultForeground: Schema.NullOr(Schema.String),
+  defaultBackground: Schema.NullOr(Schema.String),
+})
+
+const readCache = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const content = yield* fs.readFileString(cachePath)
+  const parsed = yield* Effect.try(() => JSON.parse(content))
+  return yield* Schema.decodeUnknown(PaletteInputSchema)(parsed)
+}).pipe(Effect.provide(BunContext.layer), Effect.option)
+
+const writeCache = (input: PaletteInput) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* fs.makeDirectory(cacheDir, { recursive: true })
+    yield* fs.writeFileString(cachePath, JSON.stringify(input))
+  }).pipe(
+    Effect.provide(BunContext.layer),
+    Effect.catchAll(() => Effect.void),
+  )
 
 export type Theme = {
   primary: string
@@ -60,50 +92,60 @@ const fallbackTheme = buildTheme({
 
 export const ThemeProvider = ({ children }: { readonly children: ReactNode }) => {
   const renderer = useRenderer()
-  const [theme, setTheme] = useState<Theme>(fallbackTheme)
+  const [theme, setTheme] = useState<Theme | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     let active = true
-    renderer
-      .getPalette({ size: 16 })
-      .then((colors) => {
-        if (!active) return
-        if (!colors.palette[0]) return
-        setTheme(
-          buildTheme({
-            palette: colors.palette,
-            defaultForeground: colors.defaultForeground,
-            defaultBackground: colors.defaultBackground,
-          }),
-        )
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : "Failed to load theme palette"
-        logError(message)
-      })
-      .finally(() => {
-        if (active) {
-          setIsLoading(false)
-        }
-      })
+
+    const program = Effect.gen(function* () {
+      // 1. Try cache first
+      const cached = yield* readCache
+      if (Option.isSome(cached) && cached.value.palette[0] && active) {
+        setTheme(buildTheme(cached.value))
+        setIsLoading(false)
+      }
+
+      // 2. Fetch fresh palette
+      const fresh = yield* Effect.tryPromise(() => renderer.getPalette({ size: 16 }))
+      if (!active || !fresh.palette[0]) return
+
+      const freshInput: PaletteInput = {
+        palette: fresh.palette,
+        defaultForeground: fresh.defaultForeground,
+        defaultBackground: fresh.defaultBackground,
+      }
+
+      // 3. Compare and update if changed
+      const cachedValue = Option.isSome(cached) ? cached.value : null
+      const hasChanged = JSON.stringify(cachedValue) !== JSON.stringify(freshInput)
+      if (hasChanged) {
+        setTheme(buildTheme(freshInput))
+        yield* writeCache(freshInput)
+      }
+    }).pipe(
+      Effect.catchAll((error) => {
+        logError(error instanceof Error ? error.message : "Failed to load palette")
+        return Effect.void
+      }),
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (active) setIsLoading(false)
+        }),
+      ),
+    )
+
+    void Effect.runPromise(program)
     return () => {
       active = false
     }
   }, [renderer])
 
-  const value = useMemo(() => theme, [theme])
-
-  if (isLoading) {
-    return (
-      <box justifyContent="center" alignItems="center" flexGrow={1} flexDirection="row" gap={2}>
-        <spinner name="dots" color={theme.secondary} />
-        <text fg={theme.textMuted}>Loading theme palette</text>
-      </box>
-    )
+  if (isLoading && !theme) {
+    return null
   }
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  return <ThemeContext.Provider value={theme ?? fallbackTheme}>{children}</ThemeContext.Provider>
 }
 
 export const useTheme = () => {
