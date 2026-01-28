@@ -1,6 +1,6 @@
 [package]
 name = "kopa-daemon"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -9,7 +9,13 @@ directories = "6.0.0"
 rusqlite = "0.38.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-tokio = { version = "1.49.0", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"] }
+tokio = { version = "1.49.0", features = [
+  "rt-multi-thread",
+  "net",
+  "sync",
+  "macros",
+  "io-util",
+] }
 wl-clipboard-rs = "0.9.3"
 
 
