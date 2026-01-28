@@ -30,6 +30,12 @@ pub enum Request {
         cursor: Option<i64>,
         limit: Option<u32>,
     },
+    CopyToClipboard {
+        entry_id: i64,
+    },
+    CopyTextToClipboard {
+        content: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,6 +45,7 @@ pub enum Response {
         entries: Vec<TextEntry>,
         next_cursor: Option<i64>,
     },
+    Success,
     Error { message: String },
 }
 
@@ -108,6 +115,15 @@ fn handle_request(conn: Connection, request: Request) -> Result<Response> {
                 entries,
                 next_cursor,
             })
+        }
+        Request::CopyToClipboard { entry_id } => {
+            let content = get_entry_content(&conn, entry_id)?;
+            copy_to_clipboard(content)?;
+            Ok(Response::Success)
+        }
+        Request::CopyTextToClipboard { content } => {
+            copy_to_clipboard(content)?;
+            Ok(Response::Success)
         }
     }
 }
@@ -290,6 +306,23 @@ fn to_fts_query(query: &str) -> String {
         })
         .collect::<Vec<String>>()
         .join(" ")
+}
+
+fn get_entry_content(conn: &Connection, entry_id: i64) -> Result<String> {
+    conn.query_row(
+        "SELECT te.content FROM text_entries te WHERE te.entry_id = ?1",
+        params![entry_id],
+        |row| row.get(0),
+    )
+    .context("Entry not found")
+}
+
+fn copy_to_clipboard(content: String) -> Result<()> {
+    use wl_clipboard_rs::copy::{MimeType, Options, Source};
+    Options::new()
+        .copy(Source::Bytes(content.into_bytes().into()), MimeType::Text)
+        .context("Failed to copy entry to clipboard")?;
+    Ok(())
 }
 
 fn socket_path() -> Result<PathBuf> {

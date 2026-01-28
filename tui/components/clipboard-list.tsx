@@ -1,8 +1,9 @@
 import type { TextEntryRow } from "../lib/db"
 import { useKeyboard } from "@opentui/react"
+import { Effect } from "effect"
 import { useMemo, useState } from "react"
 
-import { copy } from "../lib/clipboard"
+import { copyToClipboard } from "../lib/db"
 import { formatTimestamp, truncateContent } from "../lib/clipboard-list-utils"
 import { logError } from "../lib/logger"
 import { useTheme } from "../lib/theme"
@@ -87,7 +88,7 @@ export const ClipboardList = ({
             if (!entry) {
               return
             }
-            void copy(entry.content).catch((copyError) => {
+            void Effect.runPromise(copyToClipboard(entry.id)).catch((copyError: unknown) => {
               const message = copyError instanceof Error ? copyError.message : "Failed to copy entry"
               logError(message)
             })

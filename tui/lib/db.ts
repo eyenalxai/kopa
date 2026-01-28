@@ -24,6 +24,12 @@ type Request =
         readonly limit?: number
       }
     }
+  | {
+      readonly type: "copy_to_clipboard"
+      readonly data: {
+        readonly entry_id: number
+      }
+    }
 
 const TextEntryRowSchema = Schema.Struct({
   id: Schema.Number,
@@ -46,6 +52,10 @@ const EntriesResponseSchema = Schema.Struct({
   }),
 })
 
+const SuccessResponseSchema = Schema.Struct({
+  type: Schema.Literal("success"),
+})
+
 const ErrorResponseSchema = Schema.Struct({
   type: Schema.Literal("error"),
   data: Schema.Struct({
@@ -53,24 +63,45 @@ const ErrorResponseSchema = Schema.Struct({
   }),
 })
 
-const ResponseSchema = Schema.Union(EntriesResponseSchema, ErrorResponseSchema)
+const ResponseSchema = Schema.Union(EntriesResponseSchema, SuccessResponseSchema, ErrorResponseSchema)
 
-const decodeResponse = (payload: string) =>
+const parseResponse = (payload: string) =>
   Effect.try(() => JSON.parse(payload)).pipe(
     Effect.flatMap((parsed) => Schema.decodeUnknown(ResponseSchema)(parsed)),
     Effect.mapError((error) => new Error(`Invalid response from daemon: ${String(error)}`)),
-    Effect.flatMap((response) =>
-      response.type === "error"
-        ? Effect.fail(new Error(response.data.message))
-        : Effect.succeed({
-            entries: response.data.entries,
-            nextCursor: response.data.next_cursor,
-          }),
-    ),
   )
 
-const sendRequest = (request: Request) =>
-  Effect.async<EntriesPage, Error>((resume) => {
+const decodeEntriesResponse = (payload: string) =>
+  parseResponse(payload).pipe(
+    Effect.flatMap((response) => {
+      if (response.type === "error") {
+        return Effect.fail(new Error(response.data.message))
+      }
+      if (response.type !== "entries") {
+        return Effect.fail(new Error("Unexpected response from daemon"))
+      }
+      return Effect.succeed({
+        entries: response.data.entries,
+        nextCursor: response.data.next_cursor,
+      })
+    }),
+  )
+
+const decodeSuccessResponse = (payload: string) =>
+  parseResponse(payload).pipe(
+    Effect.flatMap((response) => {
+      if (response.type === "error") {
+        return Effect.fail(new Error(response.data.message))
+      }
+      if (response.type !== "success") {
+        return Effect.fail(new Error("Unexpected response from daemon"))
+      }
+      return Effect.succeed(undefined)
+    }),
+  )
+
+const sendRequest = <A>(request: Request, decode: (payload: string) => Effect.Effect<A, Error>) =>
+  Effect.async<A, Error>((resume) => {
     const socket = connect({ path: socketPath })
     let buffer = ""
     let settled = false
@@ -100,7 +131,7 @@ const sendRequest = (request: Request) =>
       settled = true
       socket.removeAllListeners()
       socket.end()
-      resume(decodeResponse(line))
+      resume(decode(line))
     })
     socket.on("connect", () => {
       socket.write(`${JSON.stringify(request)}\n`)
@@ -119,7 +150,16 @@ export const getTextEntries = (cursor?: number, limit?: number) =>
   sendRequest({
     type: "list_entries",
     data: { cursor, limit },
-  })
+  }, decodeEntriesResponse)
 
 export const searchTextEntries = (query: string, cursor?: number, limit?: number) =>
-  sendRequest({ type: "search_entries", data: { query, cursor, limit } })
+  sendRequest({ type: "search_entries", data: { query, cursor, limit } }, decodeEntriesResponse)
+
+export const copyToClipboard = (entryId: number) =>
+  sendRequest(
+    {
+      type: "copy_to_clipboard",
+      data: { entry_id: entryId },
+    },
+    decodeSuccessResponse,
+  )
