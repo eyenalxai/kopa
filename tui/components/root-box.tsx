@@ -32,13 +32,7 @@ export const RootBox = ({ children }: RootBoxProps) => {
   })
 
   return (
-    <box
-      flexDirection="column"
-      alignItems="stretch"
-      flexGrow={1}
-      padding={1}
-      onMouseUp={handleMouseUp}
-    >
+    <box margin={0} padding={0} onMouseUp={handleMouseUp}>
       {children}
     </box>
   )

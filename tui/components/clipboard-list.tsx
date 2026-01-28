@@ -55,14 +55,12 @@ export const ClipboardList = ({
   })
 
   return (
-    <box flexDirection="column" border borderColor={theme.border} padding={1} gap={1}>
+    <box flexDirection="column" padding={1} gap={1}>
       <SearchInput value={searchQuery} focused={focusedElement === "input"} onInput={onSearch} />
       {hasEntries ? (
         <select
           focused={focusedElement === "list"}
           options={options}
-          flexGrow={1}
-          minHeight={5}
           width="100%"
           height="100%"
           backgroundColor={theme.background}
@@ -105,7 +103,6 @@ export const ClipboardList = ({
           width="100%"
           height="100%"
           backgroundColor={theme.background}
-          padding={1}
         >
           <text fg={theme.textMuted}>No results</text>
         </box>
