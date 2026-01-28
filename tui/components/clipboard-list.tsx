@@ -4,6 +4,7 @@ import { Effect } from "effect"
 import { useMemo, useState } from "react"
 
 import { useTheme } from "../providers/theme"
+import { useToast } from "../providers/toast"
 import { copyToClipboard } from "../services/daemon"
 import { logError } from "../services/logger"
 import { formatTimestamp, truncateContent } from "../utils/format"
@@ -28,6 +29,7 @@ export const ClipboardList = ({
   isLoadingMore,
 }: ClipboardListProps) => {
   const theme = useTheme()
+  const toast = useToast()
   const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
   const hasEntries = entries.length > 0
@@ -92,6 +94,7 @@ export const ClipboardList = ({
               const message =
                 copyError instanceof Error ? copyError.message : "Failed to copy entry"
               logError(message)
+              toast.error(copyError, "Failed to copy entry")
             })
           }}
         />

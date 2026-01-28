@@ -28,7 +28,7 @@ export type ToastState = {
 
 type ToastContextValue = {
   show: (options: ToastOptions) => void
-  error: (err: unknown) => void
+  error: (err: unknown, title?: string) => void
   dismiss: () => void
   currentToast: ToastState | null
 }
@@ -79,14 +79,14 @@ export const ToastProvider = ({ children }: { readonly children: ReactNode }) =>
   )
 
   const error = useCallback(
-    (err: unknown) => {
+    (err: unknown, title?: string) => {
       const message =
         err instanceof Error
           ? err.message
           : typeof err === "string"
             ? err
             : "An unknown error has occurred"
-      show({ variant: "error", message })
+      show({ variant: "error", title, message })
     },
     [show],
   )
