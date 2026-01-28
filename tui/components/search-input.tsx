@@ -10,7 +10,7 @@ export const SearchInput = ({ value, onInput, focused }: SearchInputProps) => {
   const theme = useTheme()
 
   return (
-    <box border borderColor={theme.borderSubtle} padding={1}>
+    <box border borderColor={focused ? theme.primary : theme.borderSubtle} padding={1}>
       <input placeholder="Search clipboard..." value={value} focused={focused} onInput={onInput} />
     </box>
   )
