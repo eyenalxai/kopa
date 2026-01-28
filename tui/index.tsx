@@ -6,9 +6,10 @@ import { Effect } from "effect"
 
 import { App } from "./components/app"
 import { RootBox } from "./components/root-box"
-import { Toast, ToastProvider } from "./components/toast"
-import { ExitProvider } from "./lib/exit"
-import { ThemeProvider } from "./lib/theme"
+import { Toast } from "./components/toast-notification"
+import { ExitProvider } from "./providers/exit"
+import { ThemeProvider } from "./providers/theme"
+import { ToastProvider } from "./providers/toast"
 
 const queryClient = new QueryClient()
 

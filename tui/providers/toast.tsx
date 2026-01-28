@@ -1,5 +1,3 @@
-import { MouseEvent, TextAttributes } from "@opentui/core"
-import { useTerminalDimensions } from "@opentui/react"
 import {
   createContext,
   useCallback,
@@ -11,8 +9,7 @@ import {
   type ReactNode,
 } from "react"
 
-import { SplitBorder } from "../lib/border"
-import { useTheme } from "../lib/theme"
+import { useTheme } from "./theme"
 
 type ToastVariant = "info" | "success" | "warning" | "error"
 
@@ -23,7 +20,7 @@ export type ToastOptions = {
   duration?: number
 }
 
-type ToastState = {
+export type ToastState = {
   title?: string
   message: string
   variant: ToastVariant
@@ -39,20 +36,6 @@ type ToastContextValue = {
 const ToastContext = createContext<ToastContextValue | null>(null)
 
 const defaultDurationMs = 5000
-
-const resolveVariantColor = (variant: ToastVariant, theme: ReturnType<typeof useTheme>) => {
-  switch (variant) {
-    case "success":
-      return theme.success
-    case "warning":
-      return theme.warning
-    case "error":
-      return theme.error
-    case "info":
-    default:
-      return theme.primary
-  }
-}
 
 const normalizeToastOptions = (options: ToastOptions) => {
   const variant = options.variant ?? "info"
@@ -129,53 +112,16 @@ export const useToast = () => {
   return value
 }
 
-export const Toast = () => {
-  const { currentToast, dismiss } = useToast()
-  const theme = useTheme()
-  const dimensions = useTerminalDimensions()
-  const handleMouseDown = useCallback(
-    (event: MouseEvent) => {
-      if (event.button === 2) {
-        dismiss()
-      }
-    },
-    [dismiss],
-  )
-
-  if (!currentToast) {
-    return null
+export const resolveVariantColor = (variant: ToastVariant, theme: ReturnType<typeof useTheme>) => {
+  switch (variant) {
+    case "success":
+      return theme.success
+    case "warning":
+      return theme.warning
+    case "error":
+      return theme.error
+    case "info":
+    default:
+      return theme.primary
   }
-
-  const maxWidth = Math.min(60, Math.max(0, dimensions.width - 6))
-  const borderColor = resolveVariantColor(currentToast.variant, theme)
-
-  return (
-    <box
-      position="absolute"
-      zIndex={1000}
-      justifyContent="center"
-      alignItems="flex-start"
-      top={2}
-      right={2}
-      maxWidth={maxWidth}
-      paddingLeft={2}
-      paddingRight={2}
-      paddingTop={1}
-      paddingBottom={1}
-      backgroundColor={theme.background}
-      borderColor={borderColor}
-      border={SplitBorder.border}
-      customBorderChars={SplitBorder.customBorderChars}
-      onMouseDown={handleMouseDown}
-    >
-      {currentToast.title ? (
-        <text attributes={TextAttributes.BOLD} marginBottom={1} fg={theme.text}>
-          {currentToast.title}
-        </text>
-      ) : null}
-      <text fg={theme.text} wrapMode="word" width="100%">
-        {currentToast.message}
-      </text>
-    </box>
-  )
 }

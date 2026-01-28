@@ -1,7 +1,7 @@
 import { createTextAttributes } from "@opentui/core"
 import { useState } from "react"
 
-import { useTheme } from "../lib/theme"
+import { useTheme } from "../providers/theme"
 
 type ContentErrorProps = {
   readonly children: string

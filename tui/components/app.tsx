@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import { useMemo, useState } from "react"
 import { useDebounceValue } from "usehooks-ts"
 
-import { getTextEntries, searchTextEntries, socketPath, type EntriesPage } from "../lib/db"
+import { getTextEntries, searchTextEntries, socketPath, type EntriesPage } from "../services/daemon"
 
 import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"

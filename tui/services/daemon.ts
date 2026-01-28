@@ -63,7 +63,11 @@ const ErrorResponseSchema = Schema.Struct({
   }),
 })
 
-const ResponseSchema = Schema.Union(EntriesResponseSchema, SuccessResponseSchema, ErrorResponseSchema)
+const ResponseSchema = Schema.Union(
+  EntriesResponseSchema,
+  SuccessResponseSchema,
+  ErrorResponseSchema,
+)
 
 const parseResponse = (payload: string) =>
   Effect.try(() => JSON.parse(payload)).pipe(
@@ -147,10 +151,13 @@ const sendRequest = <A>(request: Request, decode: (payload: string) => Effect.Ef
   })
 
 export const getTextEntries = (cursor?: number, limit?: number) =>
-  sendRequest({
-    type: "list_entries",
-    data: { cursor, limit },
-  }, decodeEntriesResponse)
+  sendRequest(
+    {
+      type: "list_entries",
+      data: { cursor, limit },
+    },
+    decodeEntriesResponse,
+  )
 
 export const searchTextEntries = (query: string, cursor?: number, limit?: number) =>
   sendRequest({ type: "search_entries", data: { query, cursor, limit } }, decodeEntriesResponse)

@@ -1,4 +1,4 @@
-import { useTheme } from "../lib/theme"
+import { useTheme } from "../providers/theme"
 
 type SearchInputProps = {
   readonly value: string

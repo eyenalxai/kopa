@@ -1,9 +1,9 @@
 import { useKeyboard, useRenderer } from "@opentui/react"
 import type { ReactNode } from "react"
 
-import { copy } from "../lib/clipboard"
-import { useExit } from "../lib/exit"
-import { logError } from "../lib/logger"
+import { useExit } from "../providers/exit"
+import { copy } from "../services/clipboard"
+import { logError } from "../services/logger"
 
 type RootBoxProps = {
   readonly children: ReactNode
