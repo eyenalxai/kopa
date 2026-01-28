@@ -1,8 +1,11 @@
+import "opentui-spinner/react"
+
 import { keepPreviousData, useInfiniteQuery, type InfiniteData } from "@tanstack/react-query"
 import { Effect } from "effect"
 import { useMemo, useState } from "react"
 import { useDebounceValue } from "usehooks-ts"
 
+import { useTheme } from "../providers/theme"
 import { getTextEntries, searchTextEntries, socketPath, type EntriesPage } from "../services/daemon"
 
 import { ClipboardList } from "./clipboard-list"
@@ -32,6 +35,8 @@ export const App = () => {
     })
   const entries = useMemo(() => data?.pages.flatMap((page) => page.entries) ?? [], [data])
 
+  const theme = useTheme()
+
   if (error) {
     const errorMessage = error.message
     const displayError =
@@ -43,7 +48,12 @@ export const App = () => {
   }
 
   if (isPending && !data) {
-    return null
+    return (
+      <box justifyContent="center" alignItems="center" flexGrow={1} flexDirection="row" gap={2}>
+        <spinner name="dots" color={theme.secondary} />
+        <text fg={theme.textMuted}>Loading clipboard entries</text>
+      </box>
+    )
   }
 
   return (

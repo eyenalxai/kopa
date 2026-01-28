@@ -28,12 +28,12 @@ const run = Effect.tryPromise({
           <QueryClientProvider client={queryClient}>
             <ExitProvider>
               <ToastProvider>
-                <ThemeProvider>
-                  <RootBox>
+                <RootBox>
+                  <ThemeProvider>
                     <App />
                     <Toast />
-                  </RootBox>
-                </ThemeProvider>
+                  </ThemeProvider>
+                </RootBox>
               </ToastProvider>
             </ExitProvider>
           </QueryClientProvider>,

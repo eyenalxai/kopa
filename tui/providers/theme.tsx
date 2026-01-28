@@ -95,7 +95,12 @@ export const ThemeProvider = ({ children }: { readonly children: ReactNode }) =>
   const value = useMemo(() => theme, [theme])
 
   if (isLoading) {
-    return null
+    return (
+      <box justifyContent="center" alignItems="center" flexGrow={1} flexDirection="row" gap={2}>
+        <spinner name="dots" color={theme.secondary} />
+        <text fg={theme.textMuted}>Loading theme palette</text>
+      </box>
+    )
   }
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
