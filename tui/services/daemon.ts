@@ -35,7 +35,6 @@ export const getEntries = (
 
     let entries = history.clipboardHistory
 
-    // Simple pagination by index
     if (cursor !== undefined) {
       entries = entries.slice(cursor)
     }
@@ -71,7 +70,6 @@ export const searchEntries = (
     const lowerQuery = query.toLowerCase()
     let entries = history.clipboardHistory.filter((e) => e.value.toLowerCase().includes(lowerQuery))
 
-    // Pagination
     if (cursor !== undefined) {
       entries = entries.slice(cursor)
     }

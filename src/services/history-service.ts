@@ -51,7 +51,6 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
     const add = Effect.fn("HistoryService.add")(function* (value: string) {
       const history = yield* read()
 
-      // Skip empty values
       if (!value || value.trim().length === 0) {
         return
       }

@@ -9,22 +9,16 @@ const args = process.argv.slice(2)
 const isDaemon = args.includes("--daemon")
 const isStore = args.includes("--store")
 
-// Get the path to this script for spawning watchers
 const getScriptPath = () => {
-  // If running with bun, we need the actual entry point
   if (process.argv[1]) {
     return process.argv[1]
   }
-  // Fallback for compiled binary
   return fileURLToPath(import.meta.url)
 }
 
-// Store mode: read from stdin and add to history
-// This is called by wl-paste --watch when clipboard changes
 const storeProgram = Effect.gen(function* () {
   const history = yield* HistoryService
 
-  // Read all stdin
   const reader = Bun.stdin.stream().getReader()
   const chunks: Uint8Array[] = []
 
@@ -41,7 +35,6 @@ const storeProgram = Effect.gen(function* () {
   }
 })
 
-// Daemon mode: spawn wl-paste --watch processes
 const daemonProgram = Effect.gen(function* () {
   const clipboard = yield* ClipboardService
 
@@ -49,7 +42,6 @@ const daemonProgram = Effect.gen(function* () {
 
   const scriptPath = getScriptPath()
 
-  // Spawn text watcher
   yield* Effect.log("Spawning text watcher...")
   const textProc = Bun.spawn(
     [clipboard.wlPastePath, "--type", "text", "--watch", "bun", "run", scriptPath, "--store"],
@@ -59,7 +51,6 @@ const daemonProgram = Effect.gen(function* () {
     },
   )
 
-  // Spawn image watcher
   yield* Effect.log("Spawning image watcher...")
   const imageProc = Bun.spawn(
     [clipboard.wlPastePath, "--type", "image/png", "--watch", "bun", "run", scriptPath, "--store"],
@@ -69,7 +60,6 @@ const daemonProgram = Effect.gen(function* () {
     },
   )
 
-  // Create streams for stderr logging
   const textStderrStream = Stream.fromAsyncIterable(textProc.stderr, () => Effect.void).pipe(
     Stream.map((chunk) => new TextDecoder().decode(chunk)),
     Stream.tap((err) => Effect.logError(`text watcher stderr: ${err}`)),
@@ -80,29 +70,24 @@ const daemonProgram = Effect.gen(function* () {
     Stream.tap((err) => Effect.logError(`image watcher stderr: ${err}`)),
   )
 
-  // Fork stderr loggers
   yield* textStderrStream.pipe(Stream.runDrain, Effect.forkDaemon)
   yield* imageStderrStream.pipe(Stream.runDrain, Effect.forkDaemon)
 
-  // Keep the daemon alive with periodic logging
   yield* Effect.repeat(Effect.log("Clipboard monitor running..."), Schedule.fixed("1 minute"))
 })
 
 const AppLive = Layer.mergeAll(HistoryService.Default, ClipboardService.Default)
 
 if (isStore) {
-  // Store mode: read stdin and add to history
   Effect.runPromise(storeProgram.pipe(Effect.provide(AppLive))).catch((error: unknown) => {
     console.error("Store error:", error)
     process.exit(1)
   })
 } else if (isDaemon) {
-  // Daemon mode: spawn watchers
   Effect.runPromise(daemonProgram.pipe(Effect.provide(AppLive))).catch((error: unknown) => {
     console.error("Daemon error:", error)
     process.exit(1)
   })
 } else {
-  // TUI mode: run the TUI
   await import("../tui/index")
 }

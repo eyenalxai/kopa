@@ -99,14 +99,12 @@ export const ThemeProvider = ({ children }: { readonly children: ReactNode }) =>
     let active = true
 
     const program = Effect.gen(function* () {
-      // 1. Try cache first
       const cached = yield* readCache
       if (Option.isSome(cached) && cached.value.palette[0] && active) {
         setTheme(buildTheme(cached.value))
         setIsLoading(false)
       }
 
-      // 2. Fetch fresh palette
       const fresh = yield* Effect.tryPromise(() => renderer.getPalette({ size: 16 }))
       if (!active || !fresh.palette[0]) return
 
@@ -116,7 +114,6 @@ export const ThemeProvider = ({ children }: { readonly children: ReactNode }) =>
         defaultBackground: fresh.defaultBackground,
       }
 
-      // 3. Compare and update if changed
       const cachedValue = Option.isSome(cached) ? cached.value : null
       const hasChanged = JSON.stringify(cachedValue) !== JSON.stringify(freshInput)
       if (hasChanged) {
