@@ -1,4 +1,4 @@
-import type { TextEntryRow } from "../services/daemon"
+import type { ClipboardEntry } from "../services/daemon"
 import type { SelectRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import { Effect } from "effect"
@@ -8,12 +8,12 @@ import { useTheme } from "../providers/theme"
 import { useToast } from "../providers/toast"
 import { copyToClipboard } from "../services/daemon"
 import { logError } from "../services/logger"
-import { formatTimestamp, truncateContent } from "../utils/format"
+import { truncateContent } from "../utils/format"
 
 import { SearchInput } from "./search-input"
 
 type ClipboardListProps = {
-  readonly entries: ReadonlyArray<TextEntryRow>
+  readonly entries: ReadonlyArray<ClipboardEntry>
   readonly searchQuery: string
   readonly onSearch: (query: string) => void
   readonly onLoadMore: () => void
@@ -33,14 +33,14 @@ export const ClipboardList = ({
   const toast = useToast()
   const selectRef = useRef<SelectRenderable>(null)
   const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
-  const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
+
   const hasEntries = entries.length > 0
   const options = useMemo(
     () =>
-      entries.map((entry) => ({
-        name: truncateContent(entry.content),
-        description: formatTimestamp(entry.created_at),
-        value: entry.id,
+      entries.map((entry, index) => ({
+        name: truncateContent(entry.value),
+        description: new Date(entry.recorded).toLocaleString(),
+        value: index,
       })),
     [entries],
   )
@@ -97,11 +97,11 @@ export const ClipboardList = ({
             if (!option || typeof option.value !== "number") {
               return
             }
-            const entry = entriesById.get(option.value)
+            const entry = entries[option.value]
             if (!entry) {
               return
             }
-            void Effect.runPromise(copyToClipboard(entry.id)).catch((copyError: unknown) => {
+            void Effect.runPromise(copyToClipboard(entry.value)).catch((copyError: unknown) => {
               const message =
                 copyError instanceof Error ? copyError.message : "Failed to copy entry"
               logError(message)

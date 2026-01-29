@@ -5,7 +5,7 @@ import { Effect } from "effect"
 import { useMemo, useState } from "react"
 import { useDebounceValue } from "usehooks-ts"
 
-import { getTextEntries, searchTextEntries, socketPath, type EntriesPage } from "../services/daemon"
+import { getEntries, searchEntries, type EntriesPage } from "../services/daemon"
 
 import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
@@ -26,7 +26,7 @@ export const App = () => {
       queryKey,
       queryFn: ({ pageParam }) =>
         Effect.runPromise(
-          debouncedQuery ? searchTextEntries(debouncedQuery, pageParam) : getTextEntries(pageParam),
+          debouncedQuery ? searchEntries(debouncedQuery, pageParam) : getEntries(pageParam),
         ),
       initialPageParam: undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -36,10 +36,7 @@ export const App = () => {
 
   if (error) {
     const errorMessage = error.message
-    const displayError =
-      errorMessage.includes("ENOENT") || errorMessage.includes("ECONNREFUSED")
-        ? `Unable to connect to kopa daemon at ${socketPath}.`
-        : `Failed to load clipboard entries: ${errorMessage}`
+    const displayError = `Failed to load clipboard entries: ${errorMessage}`
 
     return <ContentError title="Error loading clipboard entries">{displayError}</ContentError>
   }

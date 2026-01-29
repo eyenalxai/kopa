@@ -7,8 +7,10 @@
   "scripts": {
     "lint": "oxlint --type-aware --fix",
     "format": "oxfmt",
-    "dev:watch": "bun run --watch tui/index.tsx",
-    "dev": "bun run tui/index.tsx"
+    "start-tui": "bun run src/main.ts",
+    "start-daemon": "bun run src/main.ts --daemon",
+    "dev-tui": "bun run --watch src/main.ts",
+    "dev-daemon": "bun run --watch src/main.ts --daemon"
   },
   "dependencies": {
     "@effect/cluster": "^0.56.1",

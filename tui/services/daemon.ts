@@ -1,172 +1,105 @@
-import { connect } from "node:net"
 import { homedir } from "node:os"
-import { join } from "node:path"
 
-import { Effect, Schema } from "effect"
+import { Effect } from "effect"
 
-export const socketPath = join(homedir(), ".local/share/kopa/kopa.sock")
+const dataDir = `${homedir()}/.config/kopa`
+const historyFilePath = `${dataDir}/history.json`
 
-type PaginationParams = {
-  readonly cursor?: number
-  readonly limit?: number
+export interface ClipboardEntry {
+  value: string
+  recorded: string
+  filePath: string
 }
 
-type Request =
-  | {
-      readonly type: "list_entries"
-      readonly data?: PaginationParams
-    }
-  | {
-      readonly type: "search_entries"
-      readonly data: {
-        readonly query: string
-        readonly cursor?: number
-        readonly limit?: number
-      }
-    }
-  | {
-      readonly type: "copy_to_clipboard"
-      readonly data: {
-        readonly entry_id: number
-      }
-    }
-
-const TextEntryRowSchema = Schema.Struct({
-  id: Schema.Number,
-  content: Schema.String,
-  created_at: Schema.Number,
-})
-
-export type TextEntryRow = Schema.Schema.Type<typeof TextEntryRowSchema>
-
 export type EntriesPage = {
-  readonly entries: ReadonlyArray<TextEntryRow>
+  readonly entries: ReadonlyArray<ClipboardEntry>
   readonly nextCursor: number | null
 }
 
-const EntriesResponseSchema = Schema.Struct({
-  type: Schema.Literal("entries"),
-  data: Schema.Struct({
-    entries: Schema.Array(TextEntryRowSchema),
-    next_cursor: Schema.NullOr(Schema.Number),
-  }),
-})
+export const getEntries = (
+  cursor?: number,
+  limit: number = 50,
+): Effect.Effect<EntriesPage, Error> =>
+  Effect.gen(function* () {
+    const file = Bun.file(historyFilePath)
+    const exists = yield* Effect.promise(() => file.exists())
 
-const SuccessResponseSchema = Schema.Struct({
-  type: Schema.Literal("success"),
-})
-
-const ErrorResponseSchema = Schema.Struct({
-  type: Schema.Literal("error"),
-  data: Schema.Struct({
-    message: Schema.String,
-  }),
-})
-
-const ResponseSchema = Schema.Union(
-  EntriesResponseSchema,
-  SuccessResponseSchema,
-  ErrorResponseSchema,
-)
-
-const parseResponse = (payload: string) =>
-  Effect.try(() => JSON.parse(payload)).pipe(
-    Effect.flatMap((parsed) => Schema.decodeUnknown(ResponseSchema)(parsed)),
-    Effect.mapError((error) => new Error(`Invalid response from daemon: ${String(error)}`)),
-  )
-
-const decodeEntriesResponse = (payload: string) =>
-  parseResponse(payload).pipe(
-    Effect.flatMap((response) => {
-      if (response.type === "error") {
-        return Effect.fail(new Error(response.data.message))
-      }
-      if (response.type !== "entries") {
-        return Effect.fail(new Error("Unexpected response from daemon"))
-      }
-      return Effect.succeed({
-        entries: response.data.entries,
-        nextCursor: response.data.next_cursor,
-      })
-    }),
-  )
-
-const decodeSuccessResponse = (payload: string) =>
-  parseResponse(payload).pipe(
-    Effect.flatMap((response) => {
-      if (response.type === "error") {
-        return Effect.fail(new Error(response.data.message))
-      }
-      if (response.type !== "success") {
-        return Effect.fail(new Error("Unexpected response from daemon"))
-      }
-      return Effect.succeed(undefined)
-    }),
-  )
-
-const sendRequest = <A>(request: Request, decode: (payload: string) => Effect.Effect<A, Error>) =>
-  Effect.async<A, Error>((resume) => {
-    const socket = connect({ path: socketPath })
-    let buffer = ""
-    let settled = false
-
-    const fail = (error: Error) => {
-      if (settled) {
-        return
-      }
-      settled = true
-      socket.removeAllListeners()
-      socket.end()
-      resume(Effect.fail(error))
+    if (!exists) {
+      return { entries: [], nextCursor: null }
     }
 
-    socket.setEncoding("utf8")
-    socket.on("error", (error) => {
-      fail(error instanceof Error ? error : new Error("Socket error"))
+    const history = yield* Effect.tryPromise({
+      try: () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
+      catch: (error) => new Error(`Failed to read history: ${String(error)}`),
     })
-    socket.on("data", (chunk) => {
-      buffer += chunk
-      const newlineIndex = buffer.indexOf("\n")
-      if (newlineIndex === -1) {
-        return
-      }
 
-      const line = buffer.slice(0, newlineIndex)
-      settled = true
-      socket.removeAllListeners()
-      socket.end()
-      resume(decode(line))
-    })
-    socket.on("connect", () => {
-      socket.write(`${JSON.stringify(request)}\n`)
-    })
-    return Effect.sync(() => {
-      if (settled) {
-        return
-      }
-      settled = true
-      socket.removeAllListeners()
-      socket.end()
-    })
+    let entries = history.clipboardHistory
+
+    // Simple pagination by index
+    if (cursor !== undefined) {
+      entries = entries.slice(cursor)
+    }
+
+    const hasMore = entries.length > limit
+    const resultEntries = entries.slice(0, limit)
+    const nextCursor = hasMore ? (cursor ?? 0) + limit : null
+
+    return {
+      entries: resultEntries,
+      nextCursor,
+    }
   })
 
-export const getTextEntries = (cursor?: number, limit?: number) =>
-  sendRequest(
-    {
-      type: "list_entries",
-      data: { cursor, limit },
-    },
-    decodeEntriesResponse,
-  )
+export const searchEntries = (
+  query: string,
+  cursor?: number,
+  limit: number = 50,
+): Effect.Effect<EntriesPage, Error> =>
+  Effect.gen(function* () {
+    const file = Bun.file(historyFilePath)
+    const exists = yield* Effect.promise(() => file.exists())
 
-export const searchTextEntries = (query: string, cursor?: number, limit?: number) =>
-  sendRequest({ type: "search_entries", data: { query, cursor, limit } }, decodeEntriesResponse)
+    if (!exists) {
+      return { entries: [], nextCursor: null }
+    }
 
-export const copyToClipboard = (entryId: number) =>
-  sendRequest(
-    {
-      type: "copy_to_clipboard",
-      data: { entry_id: entryId },
-    },
-    decodeSuccessResponse,
-  )
+    const history = yield* Effect.tryPromise({
+      try: () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
+      catch: (error) => new Error(`Failed to read history: ${String(error)}`),
+    })
+
+    const lowerQuery = query.toLowerCase()
+    let entries = history.clipboardHistory.filter((e) => e.value.toLowerCase().includes(lowerQuery))
+
+    // Pagination
+    if (cursor !== undefined) {
+      entries = entries.slice(cursor)
+    }
+
+    const hasMore = entries.length > limit
+    const resultEntries = entries.slice(0, limit)
+    const nextCursor = hasMore ? (cursor ?? 0) + limit : null
+
+    return {
+      entries: resultEntries,
+      nextCursor,
+    }
+  })
+
+export const copyToClipboard = (content: string): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    const proc = Bun.spawn(["wl-copy"], {
+      stdin: "pipe",
+      stdout: "ignore",
+      stderr: "ignore",
+    })
+
+    yield* Effect.promise(() => Promise.resolve(proc.stdin.write(content)))
+    yield* Effect.promise(() => Promise.resolve(proc.stdin.end()))
+
+    const exitCode = yield* Effect.promise(() => Promise.resolve(proc.exited))
+
+    if (exitCode !== 0) {
+      yield* Effect.fail(new Error(`wl-copy exited with code ${exitCode}`))
+    }
+  })

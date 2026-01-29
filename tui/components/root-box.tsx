@@ -1,8 +1,9 @@
 import { useKeyboard, useRenderer } from "@opentui/react"
+import { Effect } from "effect"
 import type { ReactNode } from "react"
 
 import { useExit } from "../providers/exit"
-import { copy } from "../services/clipboard"
+import { copyToClipboard } from "../services/daemon"
 import { logError } from "../services/logger"
 
 type RootBoxProps = {
@@ -12,10 +13,10 @@ type RootBoxProps = {
 export const RootBox = ({ children }: RootBoxProps) => {
   const renderer = useRenderer()
   const exit = useExit()
-  const handleMouseUp = async () => {
+  const handleMouseUp = () => {
     const text = renderer.getSelection()?.getSelectedText()
     if (text && text.length > 0) {
-      await copy(text).catch((copyError) => {
+      Effect.runPromise(copyToClipboard(text)).catch((copyError: unknown) => {
         const message = copyError instanceof Error ? copyError.message : "Failed to copy selection"
         logError(message)
       })

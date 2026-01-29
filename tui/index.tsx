@@ -43,6 +43,7 @@ const run = Effect.tryPromise({
         new Error(typeof error === "string" ? error : "Failed to render TUI application"),
     }),
   ),
+  Effect.provide(BunContext.layer),
 )
 
 run.pipe(Effect.provide(BunContext.layer), BunRuntime.runMain)
