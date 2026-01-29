@@ -5,6 +5,76 @@ import { Effect } from "effect"
 const dataDir = `${homedir()}/.config/kopa`
 const historyFilePath = `${dataDir}/history.json`
 
+/**
+ * Filters clipboard entries using fzf's fuzzy matching algorithm.
+ * Falls back to substring matching if fzf is not available.
+ */
+const fzfFilter = Effect.fn("fzfFilter")(function* (
+  query: string,
+  entries: ReadonlyArray<ClipboardEntry>,
+): Effect.Effect<ReadonlyArray<ClipboardEntry>, Error> {
+  // Empty query - return all entries
+  if (!query.trim()) {
+    return entries
+  }
+
+  // Try to use fzf for fuzzy matching
+  return yield* Effect.gen(function* () {
+    const proc = Bun.spawn(["fzf", "--filter", query, "-i", "--read0", "--print0"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    // Write entries to stdin (NUL-delimited for multi-line support)
+    const input = entries.map((e) => e.value).join("\0")
+    yield* Effect.promise(() => Promise.resolve(proc.stdin.write(input)))
+    yield* Effect.promise(() => Promise.resolve(proc.stdin.end()))
+
+    // Read stdout concurrently with waiting for process to exit
+    const stdoutChunks: Uint8Array[] = []
+    const stdoutReader = proc.stdout.getReader()
+
+    const readStdout = Effect.gen(function* () {
+      while (true) {
+        const { done, value } = yield* Effect.promise(() => stdoutReader.read())
+        if (done) break
+        if (value) stdoutChunks.push(value)
+      }
+    })
+
+    // Wait for both stdout reading and process exit
+    const [_, exitCode] = yield* Effect.all([
+      readStdout,
+      Effect.promise(() => Promise.resolve(proc.exited)),
+    ])
+
+    // If fzf failed (non-zero exit code), fall back to substring matching
+    if (exitCode !== 0) {
+      yield* Effect.log("fzf not available, falling back to substring search")
+      const lowerQuery = query.toLowerCase()
+      return entries.filter((e) => e.value.toLowerCase().includes(lowerQuery))
+    }
+
+    const output = Buffer.concat(stdoutChunks).toString("utf-8")
+    const matchedValues = output.split("\0").filter((v) => v.length > 0)
+
+    // Map matched values back to entries (preserve order)
+    const matchedSet = new Set(matchedValues)
+    const matchedEntries = entries.filter((e) => matchedSet.has(e.value))
+
+    return matchedEntries
+  }).pipe(
+    Effect.catchAll(() =>
+      Effect.gen(function* () {
+        yield* Effect.log("fzf error, falling back to substring search")
+        const lowerQuery = query.toLowerCase()
+        return entries.filter((e) => e.value.toLowerCase().includes(lowerQuery))
+      }),
+    ),
+  )
+})
+
 export interface ClipboardEntry {
   value: string
   recorded: string
@@ -67,8 +137,8 @@ export const searchEntries = (
       catch: (error) => new Error(`Failed to read history: ${String(error)}`),
     })
 
-    const lowerQuery = query.toLowerCase()
-    let entries = history.clipboardHistory.filter((e) => e.value.toLowerCase().includes(lowerQuery))
+    // Use fzf for fuzzy matching (with fallback to substring search)
+    let entries = yield* fzfFilter(query, history.clipboardHistory)
 
     if (cursor !== undefined) {
       entries = entries.slice(cursor)
