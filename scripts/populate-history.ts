@@ -80,7 +80,7 @@ const generateGarbage = (count: number) =>
 
       const length = yield* Random.nextIntBetween(10, 500)
       const typeIdx = yield* Random.nextIntBetween(0, GARBAGE_TYPES.length)
-      const type = GARBAGE_TYPES[typeIdx]
+      const type = GARBAGE_TYPES[typeIdx]!
       const value = yield* generateGarbageValue(type, length)
       const randomTime = yield* Random.nextIntBetween(oneYearAgo, now)
 

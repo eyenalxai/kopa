@@ -1,4 +1,4 @@
-const splitBorderSides = ["left", "right", "top", "bottom"] as const
+const splitBorderSides: ("left" | "right" | "top" | "bottom")[] = ["left", "right", "top", "bottom"]
 
 export const SplitBorder = {
   border: splitBorderSides,

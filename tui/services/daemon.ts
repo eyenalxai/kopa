@@ -12,7 +12,7 @@ const historyFilePath = `${dataDir}/history.json`
 const fzfFilter = Effect.fn("fzfFilter")(function* (
   query: string,
   entries: ReadonlyArray<ClipboardEntry>,
-): Effect.Effect<ReadonlyArray<ClipboardEntry>, Error> {
+) {
   // Empty query - return all entries
   if (!query.trim()) {
     return entries
