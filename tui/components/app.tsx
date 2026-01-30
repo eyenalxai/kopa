@@ -10,7 +10,7 @@ import { getEntries, searchEntries, type EntriesPage } from "../services/daemon"
 import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
 
-export const App = () => {
+export const App = async () => {
   const [searchQuery, setSearchQuery] = useState("")
   const trimmedQuery = useMemo(() => searchQuery.trim(), [searchQuery])
   const [debouncedQuery] = useDebounceValue(trimmedQuery, 150)
@@ -24,7 +24,7 @@ export const App = () => {
       number | undefined
     >({
       queryKey,
-      queryFn: ({ pageParam }) =>
+      queryFn: async ({ pageParam }) =>
         Effect.runPromise(
           debouncedQuery ? searchEntries(debouncedQuery, pageParam) : getEntries(pageParam),
         ),

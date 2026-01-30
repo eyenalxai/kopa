@@ -16,20 +16,20 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
     const historyFilePath = `${dataDir}/history.json`
 
     const ensureDir = Effect.fn("HistoryService.ensureDir")(function* () {
-      yield* Effect.promise(() => mkdir(dataDir, { recursive: true }))
+      yield* Effect.promise(async () => mkdir(dataDir, { recursive: true }))
     })
 
     const read = Effect.fn("HistoryService.read")(function* () {
       yield* ensureDir()
       const file = Bun.file(historyFilePath)
-      const exists = yield* Effect.promise(() => file.exists())
+      const exists = yield* Effect.promise(async () => file.exists())
 
       if (!exists) {
         return { clipboardHistory: [] }
       }
 
       return yield* Effect.tryPromise({
-        try: () => file.json() as Promise<ClipboardHistory>,
+        try: async () => file.json() as Promise<ClipboardHistory>,
         catch: (error) =>
           new HistoryReadError({
             message: `Failed to read history: ${String(error)}`,
@@ -40,7 +40,7 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
     const write = Effect.fn("HistoryService.write")(function* (history: ClipboardHistory) {
       yield* ensureDir()
       return yield* Effect.tryPromise({
-        try: () => Bun.write(historyFilePath, JSON.stringify(history, null, 2)),
+        try: async () => Bun.write(historyFilePath, JSON.stringify(history, null, 2)),
         catch: (error) =>
           new HistoryWriteError({
             message: `Failed to write history: ${String(error)}`,

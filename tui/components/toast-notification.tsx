@@ -6,7 +6,7 @@ import { useTheme } from "../providers/theme"
 import { resolveVariantColor, useToast } from "../providers/toast"
 import { SplitBorder } from "../utils/border"
 
-export const Toast = () => {
+export const Toast = async () => {
   const { currentToast, dismiss } = useToast()
   const theme = useTheme()
   const dimensions = useTerminalDimensions()

@@ -6,7 +6,7 @@ type SearchInputProps = {
   readonly focused: boolean
 }
 
-export const SearchInput = ({ value, onInput, focused }: SearchInputProps) => {
+export const SearchInput = async ({ value, onInput, focused }: SearchInputProps) => {
   const theme = useTheme()
 
   return (

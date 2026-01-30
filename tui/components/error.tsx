@@ -10,7 +10,12 @@ type ContentErrorProps = {
   readonly maxLines?: number
 }
 
-export const ContentError = ({ children, title, expand, maxLines = 7 }: ContentErrorProps) => {
+export const ContentError = async ({
+  children,
+  title,
+  expand,
+  maxLines = 7,
+}: ContentErrorProps) => {
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
   const isExpanded = expand === true || expanded

@@ -14,7 +14,7 @@ import { ToastProvider } from "./providers/toast"
 const queryClient = new QueryClient()
 
 const run = Effect.tryPromise({
-  try: () =>
+  try: async () =>
     createCliRenderer({
       exitOnCtrlC: false,
       useKittyKeyboard: {},

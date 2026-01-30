@@ -5,9 +5,9 @@ import { Effect, Layer, Schedule, Stream } from "effect"
 import { ClipboardService } from "./services/clipboard-service"
 import { HistoryService } from "./services/history-service"
 
-const args = process.argv.slice(2)
-const isDaemon = args.includes("--daemon")
-const isStore = args.includes("--store")
+const args = new Set(process.argv.slice(2))
+const isDaemon = args.has("--daemon")
+const isStore = args.has("--store")
 
 const getScriptPath = () => {
   if (process.argv[1]) {
@@ -23,7 +23,7 @@ const storeProgram = Effect.gen(function* () {
   const chunks: Uint8Array[] = []
 
   while (true) {
-    const { done, value } = yield* Effect.promise(() => reader.read())
+    const { done, value } = yield* Effect.promise(async () => reader.read())
     if (done) break
     chunks.push(value)
   }

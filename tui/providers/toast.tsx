@@ -50,7 +50,7 @@ const normalizeToastOptions = (options: ToastOptions) => {
   }
 }
 
-export const ToastProvider = ({ children }: { readonly children: ReactNode }) => {
+export const ToastProvider = async ({ children }: { readonly children: ReactNode }) => {
   const [currentToast, setCurrentToast] = useState<ToastState | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 

@@ -1,5 +1,5 @@
 export const truncateContent = (content: string, maxLength = 80) => {
-  const singleLine = content.replace(/\s+/g, " ").trim()
+  const singleLine = content.replaceAll(/\s+/g, " ").trim()
   if (singleLine.length <= maxLength) {
     return singleLine
   }

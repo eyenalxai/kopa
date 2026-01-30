@@ -10,7 +10,7 @@ type RootBoxProps = {
   readonly children: ReactNode
 }
 
-export const RootBox = ({ children }: RootBoxProps) => {
+export const RootBox = async ({ children }: RootBoxProps) => {
   const renderer = useRenderer()
   const exit = useExit()
   const handleMouseUp = () => {

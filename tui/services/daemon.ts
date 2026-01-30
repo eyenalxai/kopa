@@ -28,8 +28,8 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
 
     // Write entries to stdin (NUL-delimited for multi-line support)
     const input = entries.map((e) => e.value).join("\0")
-    yield* Effect.promise(() => Promise.resolve(proc.stdin.write(input)))
-    yield* Effect.promise(() => Promise.resolve(proc.stdin.end()))
+    yield* Effect.promise(async () => proc.stdin.write(input))
+    yield* Effect.promise(async () => proc.stdin.end())
 
     // Read stdout concurrently with waiting for process to exit
     const stdoutChunks: Uint8Array[] = []
@@ -37,17 +37,14 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
 
     const readStdout = Effect.gen(function* () {
       while (true) {
-        const { done, value } = yield* Effect.promise(() => stdoutReader.read())
+        const { done, value } = yield* Effect.promise(async () => stdoutReader.read())
         if (done) break
         if (value) stdoutChunks.push(value)
       }
     })
 
     // Wait for both stdout reading and process exit
-    const [_, exitCode] = yield* Effect.all([
-      readStdout,
-      Effect.promise(() => Promise.resolve(proc.exited)),
-    ])
+    const [_, exitCode] = yield* Effect.all([readStdout, Effect.promise(async () => proc.exited)])
 
     // If fzf failed (non-zero exit code), fall back to substring matching
     if (exitCode !== 0) {
@@ -92,14 +89,14 @@ export const getEntries = (
 ): Effect.Effect<EntriesPage, Error> =>
   Effect.gen(function* () {
     const file = Bun.file(historyFilePath)
-    const exists = yield* Effect.promise(() => file.exists())
+    const exists = yield* Effect.promise(async () => file.exists())
 
     if (!exists) {
       return { entries: [], nextCursor: null }
     }
 
     const history = yield* Effect.tryPromise({
-      try: () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
+      try: async () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
       catch: (error) => new Error(`Failed to read history: ${String(error)}`),
     })
 
@@ -126,14 +123,14 @@ export const searchEntries = (
 ): Effect.Effect<EntriesPage, Error> =>
   Effect.gen(function* () {
     const file = Bun.file(historyFilePath)
-    const exists = yield* Effect.promise(() => file.exists())
+    const exists = yield* Effect.promise(async () => file.exists())
 
     if (!exists) {
       return { entries: [], nextCursor: null }
     }
 
     const history = yield* Effect.tryPromise({
-      try: () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
+      try: async () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
       catch: (error) => new Error(`Failed to read history: ${String(error)}`),
     })
 
@@ -162,10 +159,10 @@ export const copyToClipboard = (content: string): Effect.Effect<void, Error> =>
       stderr: "ignore",
     })
 
-    yield* Effect.promise(() => Promise.resolve(proc.stdin.write(content)))
-    yield* Effect.promise(() => Promise.resolve(proc.stdin.end()))
+    yield* Effect.promise(async () => proc.stdin.write(content))
+    yield* Effect.promise(async () => proc.stdin.end())
 
-    const exitCode = yield* Effect.promise(() => Promise.resolve(proc.exited))
+    const exitCode = yield* Effect.promise(async () => proc.exited)
 
     if (exitCode !== 0) {
       yield* Effect.fail(new Error(`wl-copy exited with code ${exitCode}`))

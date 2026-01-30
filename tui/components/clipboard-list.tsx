@@ -21,7 +21,7 @@ type ClipboardListProps = {
   readonly isLoadingMore: boolean
 }
 
-export const ClipboardList = ({
+export const ClipboardList = async ({
   entries,
   searchQuery,
   onSearch,
