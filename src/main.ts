@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto"
-import { fileURLToPath } from "node:url"
 
-import { Effect, Layer, Schedule, Stream } from "effect"
+import { Effect, Layer, Schedule, Schema, Stream } from "effect"
 
 import { ClipboardService } from "./services/clipboard-service"
 import { HistoryService } from "./services/history-service"
@@ -10,13 +9,44 @@ const args = new Set(process.argv.slice(2))
 const isDaemon = args.has("--daemon")
 const isStore = args.has("--store")
 
-const getScriptPath = () => {
-  const scriptArg = process.argv[1]
-  if (scriptArg !== null && scriptArg !== undefined && scriptArg !== "") {
-    return scriptArg
-  }
-  return fileURLToPath(import.meta.url)
+export class ScriptPathError extends Schema.TaggedError<ScriptPathError>()("ScriptPathError", {
+  message: Schema.String,
+  argv0: Schema.optional(Schema.String),
+  argv1: Schema.optional(Schema.String),
+}) {}
+
+const isCompiledBinary = () => {
+  const argv0 = process.argv[0]
+  if (argv0 === undefined) return false
+  return argv0 !== "bun" && !argv0.endsWith("/bun")
 }
+
+const getScriptPath = Effect.fn("ScriptPath.getScriptPath")(function* () {
+  if (isCompiledBinary()) {
+    const argv0 = process.argv[0]
+    if (argv0 !== undefined && argv0 !== "") {
+      return argv0
+    }
+    return yield* Effect.fail(
+      new ScriptPathError({
+        message: "process.argv[0] is empty in compiled binary mode",
+        argv0: process.argv[0],
+        argv1: process.argv[1],
+      }),
+    )
+  }
+  const argv1 = process.argv[1]
+  if (argv1 !== undefined && argv1 !== "") {
+    return argv1
+  }
+  return yield* Effect.fail(
+    new ScriptPathError({
+      message: "process.argv[1] is empty in dev mode",
+      argv0: process.argv[0],
+      argv1: process.argv[1],
+    }),
+  )
+})
 
 const detectImageFormat = (buffer: Buffer): "png" | "jpeg" | null => {
   if (buffer.length < 4) return null
@@ -81,25 +111,29 @@ const daemonProgram = Effect.gen(function* () {
 
   yield* Effect.log("Starting clipboard monitor...")
 
-  const scriptPath = getScriptPath()
+  const scriptPath = yield* getScriptPath()
+  const compiled = isCompiledBinary()
+
+  // Build spawn args: compiled binary runs directly, dev mode uses "bun run"
+  const textSpawnArgs = compiled
+    ? [clipboard.wlPastePath, "--type", "text", "--watch", scriptPath, "--store"]
+    : [clipboard.wlPastePath, "--type", "text", "--watch", "bun", "run", scriptPath, "--store"]
+
+  const imageSpawnArgs = compiled
+    ? [clipboard.wlPastePath, "--type", "image/png", "--watch", scriptPath, "--store"]
+    : [clipboard.wlPastePath, "--type", "image/png", "--watch", "bun", "run", scriptPath, "--store"]
 
   yield* Effect.log("Spawning text watcher...")
-  const textProc = Bun.spawn(
-    [clipboard.wlPastePath, "--type", "text", "--watch", "bun", "run", scriptPath, "--store"],
-    {
-      stdout: "ignore",
-      stderr: "pipe",
-    },
-  )
+  const textProc = Bun.spawn(textSpawnArgs, {
+    stdout: "ignore",
+    stderr: "pipe",
+  })
 
   yield* Effect.log("Spawning image watcher...")
-  const imageProc = Bun.spawn(
-    [clipboard.wlPastePath, "--type", "image/png", "--watch", "bun", "run", scriptPath, "--store"],
-    {
-      stdout: "ignore",
-      stderr: "pipe",
-    },
-  )
+  const imageProc = Bun.spawn(imageSpawnArgs, {
+    stdout: "ignore",
+    stderr: "pipe",
+  })
 
   const cleanup = Effect.gen(function* () {
     yield* Effect.log("Shutting down clipboard monitor...")
