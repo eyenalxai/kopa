@@ -22,3 +22,9 @@ export class SharpLoadError extends Schema.TaggedError<SharpLoadError>()("SharpL
   message: Schema.String,
   path: Schema.optional(Schema.String),
 }) {}
+
+export class FileSizeExceeded extends Schema.TaggedError<FileSizeExceeded>()("FileSizeExceeded", {
+  message: Schema.String,
+  sizeBytes: Schema.Number,
+  maxBytes: Schema.Number,
+}) {}

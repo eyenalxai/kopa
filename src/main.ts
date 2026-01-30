@@ -84,6 +84,15 @@ const storeProgram = Effect.gen(function* () {
     return
   }
 
+  const maxSizeMb = yield* Config.number("KOPA_MAX_FILE_SIZE_MB").pipe(Config.withDefault(10))
+  const maxSizeBytes = maxSizeMb * 1024 * 1024
+  if (buffer.length > maxSizeBytes) {
+    yield* Effect.log(
+      `Skipped storing clipboard content: ${(buffer.length / 1024 / 1024).toFixed(2)}MB exceeds ${maxSizeMb}MB limit`,
+    )
+    return
+  }
+
   const imageFormat = detectImageFormat(buffer)
 
   if (imageFormat) {
