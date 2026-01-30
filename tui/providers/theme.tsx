@@ -22,7 +22,7 @@ const PaletteInputSchema = Schema.Struct({
 const readCache = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const content = yield* fs.readFileString(cachePath)
-  const parsed = yield* Effect.try(() => JSON.parse(content))
+  const parsed = yield* Effect.try(() => JSON.parse(content) as unknown)
   return yield* Schema.decodeUnknown(PaletteInputSchema)(parsed)
 }).pipe(Effect.provide(BunContext.layer), Effect.option)
 
@@ -100,13 +100,26 @@ export const ThemeProvider = async ({ children }: { readonly children: ReactNode
 
     const program = Effect.gen(function* () {
       const cached = yield* readCache
-      if (Option.isSome(cached) && cached.value.palette[0] && active) {
+      if (
+        Option.isSome(cached) &&
+        cached.value.palette[0] !== null &&
+        cached.value.palette[0] !== undefined &&
+        cached.value.palette[0] !== "" &&
+        active
+      ) {
         setTheme(buildTheme(cached.value))
         setIsLoading(false)
       }
 
       const fresh = yield* Effect.tryPromise(async () => renderer.getPalette({ size: 16 }))
-      if (!active || !fresh.palette[0]) return
+      if (
+        !active ||
+        fresh.palette[0] === null ||
+        fresh.palette[0] === undefined ||
+        fresh.palette[0] === ""
+      ) {
+        return
+      }
 
       const freshInput: PaletteInput = {
         palette: fresh.palette,

@@ -45,7 +45,9 @@ export const Toast = async () => {
       customBorderChars={SplitBorder.customBorderChars}
       onMouseDown={handleMouseDown}
     >
-      {currentToast.title ? (
+      {currentToast.title !== null &&
+      currentToast.title !== undefined &&
+      currentToast.title !== "" ? (
         <text attributes={TextAttributes.BOLD} marginBottom={1} fg={theme.text}>
           {currentToast.title}
         </text>

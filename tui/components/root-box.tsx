@@ -15,7 +15,7 @@ export const RootBox = async ({ children }: RootBoxProps) => {
   const exit = useExit()
   const handleMouseUp = () => {
     const text = renderer.getSelection()?.getSelectedText()
-    if (text && text.length > 0) {
+    if (text !== null && text !== undefined && text.length > 0) {
       Effect.runPromise(copyToClipboard(text)).catch((copyError: unknown) => {
         const message = copyError instanceof Error ? copyError.message : "Failed to copy selection"
         logError(message)

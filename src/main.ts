@@ -10,7 +10,7 @@ const isDaemon = args.has("--daemon")
 const isStore = args.has("--store")
 
 const getScriptPath = () => {
-  if (process.argv[1]) {
+  if (process.argv[1] !== null && process.argv[1] !== undefined && process.argv[1] !== "") {
     return process.argv[1]
   }
   return fileURLToPath(import.meta.url)
@@ -79,15 +79,19 @@ const daemonProgram = Effect.gen(function* () {
 const AppLive = Layer.mergeAll(HistoryService.Default, ClipboardService.Default)
 
 if (isStore) {
-  Effect.runPromise(storeProgram.pipe(Effect.provide(AppLive))).catch((error: unknown) => {
+  try {
+    await Effect.runPromise(storeProgram.pipe(Effect.provide(AppLive)))
+  } catch (error: unknown) {
     console.error("Store error:", error)
     process.exit(1)
-  })
+  }
 } else if (isDaemon) {
-  Effect.runPromise(daemonProgram.pipe(Effect.provide(AppLive))).catch((error: unknown) => {
+  try {
+    await Effect.runPromise(daemonProgram.pipe(Effect.provide(AppLive)))
+  } catch (error: unknown) {
     console.error("Daemon error:", error)
     process.exit(1)
-  })
+  }
 } else {
   await import("../tui/index")
 }

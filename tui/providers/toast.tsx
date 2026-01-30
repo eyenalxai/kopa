@@ -121,7 +121,6 @@ export const resolveVariantColor = (variant: ToastVariant, theme: ReturnType<typ
     case "error":
       return theme.error
     case "info":
-    default:
       return theme.primary
   }
 }

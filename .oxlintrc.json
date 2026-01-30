@@ -123,6 +123,7 @@
     "promise/param-names": "error",
     "promise/valid-params": "error",
     "import/no-cycle": "warn",
+    "import/no-unassigned-import": ["warn", { "allow": ["**/opentui-spinner/**"] }],
     "import/no-default-export": "off",
     "import/no-duplicates": "error",
     "import/no-self-import": "error",

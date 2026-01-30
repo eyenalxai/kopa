@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 
-import { Effect, Config } from "effect"
+import { Effect, Config, Schema } from "effect"
 
 import { HistoryReadError, HistoryWriteError } from "../errors"
 import { ClipboardHistory, type ClipboardEntry } from "../types"
@@ -28,13 +28,22 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
         return { clipboardHistory: [] }
       }
 
-      return yield* Effect.tryPromise({
-        try: async () => file.json() as Promise<ClipboardHistory>,
+      const rawHistory = yield* Effect.tryPromise({
+        try: async () => (await file.json()) as unknown,
         catch: (error) =>
           new HistoryReadError({
             message: `Failed to read history: ${String(error)}`,
           }),
       })
+
+      return yield* Schema.decodeUnknown(ClipboardHistory)(rawHistory).pipe(
+        Effect.mapError(
+          (error) =>
+            new HistoryReadError({
+              message: `Failed to decode history: ${String(error)}`,
+            }),
+        ),
+      )
     })
 
     const write = Effect.fn("HistoryService.write")(function* (history: ClipboardHistory) {

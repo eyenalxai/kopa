@@ -41,7 +41,7 @@ export const App = async () => {
     return <ContentError title="Error loading clipboard entries">{displayError}</ContentError>
   }
 
-  if (isPending && !data) {
+  if (isPending && entries.length === 0) {
     return null
   }
 

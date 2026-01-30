@@ -95,7 +95,8 @@ const generateGarbage = (count: number) =>
 
 const main = Effect.gen(function* () {
   const args = process.argv.slice(2)
-  const count = args[0] ? parseInt(args[0], 10) : 100_000
+  const count =
+    args[0] !== null && args[0] !== undefined && args[0] !== "" ? parseInt(args[0], 10) : 100_000
 
   yield* Effect.log(`Populating history with ${count} entries...`)
 

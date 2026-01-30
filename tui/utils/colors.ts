@@ -18,7 +18,7 @@ export const ANSI_FALLBACK = [
 ]
 
 export const normalizeHex = (value: string | null | undefined, fallback: string) => {
-  if (value && value.startsWith("#")) {
+  if (value !== null && value !== undefined && value !== "" && value.startsWith("#")) {
     return value
   }
   return fallback
@@ -34,8 +34,9 @@ export const hexToRgb = (hex: string) => {
   return { r, g, b }
 }
 
+const toHex = (value: number) => value.toString(16).padStart(2, "0")
+
 export const rgbToHex = (r: number, g: number, b: number) => {
-  const toHex = (value: number) => value.toString(16).padStart(2, "0")
   return `#${toHex(Math.max(0, Math.min(255, Math.round(r))))}${toHex(
     Math.max(0, Math.min(255, Math.round(g))),
   )}${toHex(Math.max(0, Math.min(255, Math.round(b))))}`

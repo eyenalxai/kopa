@@ -26,7 +26,7 @@ export const ContentError = async ({
 
   return (
     <box flexDirection="column" gap={1} border borderColor={theme.error} padding={1}>
-      {title && (
+      {title !== null && title !== undefined && title !== "" && (
         <box>
           <text fg={theme.error} wrapMode="word" attributes={createTextAttributes({ bold: true })}>
             {title}
@@ -38,7 +38,7 @@ export const ContentError = async ({
           {visibleText}
         </text>
       </box>
-      {!expand && lines.length > safeMaxLines && (
+      {expand !== true && lines.length > safeMaxLines && (
         <box onMouseUp={() => setExpanded((value) => !value)}>
           <text fg={theme.primary}>{isExpanded ? "[Show less]" : "[Show more]"}</text>
         </box>

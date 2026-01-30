@@ -1,6 +1,9 @@
 import { homedir } from "node:os"
 
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
+
+import { ClipboardHistory as ClipboardHistorySchema, type ClipboardEntry } from "../../src/types"
+export type { ClipboardEntry } from "../../src/types"
 
 const dataDir = `${homedir()}/.config/kopa`
 const historyFilePath = `${dataDir}/history.json`
@@ -39,7 +42,7 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
       while (true) {
         const { done, value } = yield* Effect.promise(async () => stdoutReader.read())
         if (done) break
-        if (value) stdoutChunks.push(value)
+        stdoutChunks.push(value)
       }
     })
 
@@ -72,12 +75,6 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
   )
 })
 
-export interface ClipboardEntry {
-  value: string
-  recorded: string
-  filePath: string
-}
-
 export type EntriesPage = {
   readonly entries: ReadonlyArray<ClipboardEntry>
   readonly nextCursor: number | null
@@ -95,10 +92,13 @@ export const getEntries = (
       return { entries: [], nextCursor: null }
     }
 
-    const history = yield* Effect.tryPromise({
-      try: async () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
+    const rawHistory = yield* Effect.tryPromise({
+      try: async () => (await file.json()) as unknown,
       catch: (error) => new Error(`Failed to read history: ${String(error)}`),
     })
+    const history = yield* Schema.decodeUnknown(ClipboardHistorySchema)(rawHistory).pipe(
+      Effect.mapError((error) => new Error(`Failed to decode history: ${String(error)}`)),
+    )
 
     let entries = history.clipboardHistory
 
@@ -129,10 +129,13 @@ export const searchEntries = (
       return { entries: [], nextCursor: null }
     }
 
-    const history = yield* Effect.tryPromise({
-      try: async () => file.json() as Promise<{ clipboardHistory: ClipboardEntry[] }>,
+    const rawHistory = yield* Effect.tryPromise({
+      try: async () => (await file.json()) as unknown,
       catch: (error) => new Error(`Failed to read history: ${String(error)}`),
     })
+    const history = yield* Schema.decodeUnknown(ClipboardHistorySchema)(rawHistory).pipe(
+      Effect.mapError((error) => new Error(`Failed to decode history: ${String(error)}`)),
+    )
 
     // Use fzf for fuzzy matching (with fallback to substring search)
     let entries = yield* fzfFilter(query, history.clipboardHistory)
