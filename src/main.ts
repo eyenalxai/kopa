@@ -16,6 +16,12 @@ export class ScriptPathError extends Schema.TaggedError<ScriptPathError>()("Scri
 }) {}
 
 const isCompiledBinary = () => {
+  // Production mode: KOPA_BINARY_PATH env var is set
+  if (process.env.KOPA_BINARY_PATH !== undefined && process.env.KOPA_BINARY_PATH !== "") {
+    return true
+  }
+  
+  // Dev mode: check if not running via bun CLI
   const argv0 = process.argv[0]
   if (argv0 === undefined) return false
   return argv0 !== "bun" && !argv0.endsWith("/bun")
@@ -115,25 +121,10 @@ const storeProgram = Effect.gen(function* () {
 const daemonProgram = Effect.gen(function* () {
   const clipboard = yield* ClipboardService
 
-  // DEBUG: Log actual values to understand why isCompiledBinary returns false
-  yield* Effect.log("Debug - Environment check", {
-    argv0: process.argv[0],
-    argv1: process.argv[1],
-    envKopaBinaryPath: process.env.KOPA_BINARY_PATH,
-    isCompiledResult: isCompiledBinary(),
-  })
-
   yield* Effect.log("Starting clipboard monitor...")
 
   const scriptPath = yield* getScriptPath()
   const compiled = isCompiledBinary()
-
-  // DEBUG: Log spawn configuration
-  yield* Effect.log("Debug - Spawn configuration", {
-    scriptPath,
-    compiled,
-    textSpawnArgs: compiled ? "direct" : "bun run",
-  })
 
   // Build spawn args: compiled binary runs directly, dev mode uses "bun run"
   const textSpawnArgs = compiled
