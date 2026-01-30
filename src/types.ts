@@ -1,6 +1,10 @@
 import { Schema } from "effect"
 
+export const ClipboardEntryType = Schema.Literal("text", "image")
+export type ClipboardEntryType = typeof ClipboardEntryType.Type
+
 export const ClipboardEntry = Schema.Struct({
+  type: ClipboardEntryType,
   value: Schema.String,
   recorded: Schema.String,
   filePath: Schema.String,

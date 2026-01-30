@@ -17,7 +17,7 @@ type ExitProviderProps = {
   readonly children: ReactNode
 }
 
-export const ExitProvider = async ({ children }: ExitProviderProps) => {
+export const ExitProvider = ({ children }: ExitProviderProps) => {
   const renderer = useRenderer()
   const exit = () => {
     renderer.destroy()

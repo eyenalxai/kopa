@@ -164,8 +164,25 @@ export const searchEntries = (
     Effect.mapError((error) => new Error(`Failed to read history: ${describeError(error)}`)),
   )
 
-export const copyToClipboard = (content: string): Effect.Effect<void, Error> =>
-  ClipboardService.copy(content).pipe(
+export const copyToClipboard = (entry: ClipboardEntry): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    if (entry.type === "image") {
+      const historyService = yield* HistoryService
+      const imagesDirPath = historyService.imagesDirPath
+
+      // Validate filePath is within the images directory (security check)
+      if (!entry.filePath.startsWith(imagesDirPath)) {
+        return yield* Effect.fail(
+          new Error(`Invalid image path: ${entry.filePath} is not within ${imagesDirPath}`),
+        )
+      }
+
+      yield* ClipboardService.copyImage(entry.filePath)
+    } else {
+      yield* ClipboardService.copyText(entry.value)
+    }
+  }).pipe(
+    Effect.provide(HistoryService.Default),
     Effect.provide(ClipboardService.Default),
     Effect.mapError((error) => new Error(`Failed to copy to clipboard: ${describeError(error)}`)),
   )

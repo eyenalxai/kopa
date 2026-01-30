@@ -21,7 +21,7 @@ type ClipboardListProps = {
   readonly isLoadingMore: boolean
 }
 
-export const ClipboardList = async ({
+export const ClipboardList = ({
   entries,
   searchQuery,
   onSearch,
@@ -104,7 +104,7 @@ export const ClipboardList = async ({
             if (!entry) {
               return
             }
-            void Effect.runPromise(copyToClipboard(entry.value)).catch((copyError: unknown) => {
+            void Effect.runPromise(copyToClipboard(entry)).catch((copyError: unknown) => {
               const message =
                 copyError instanceof Error ? copyError.message : "Failed to copy entry"
               logError(message)

@@ -90,7 +90,7 @@ const fallbackTheme = buildTheme({
   defaultBackground: ANSI_FALLBACK[0] ?? "#000000",
 })
 
-export const ThemeProvider = async ({ children }: { readonly children: ReactNode }) => {
+export const ThemeProvider = ({ children }: { readonly children: ReactNode }) => {
   const renderer = useRenderer()
   const [theme, setTheme] = useState<Theme | null>(null)
   const [isLoading, setIsLoading] = useState(true)

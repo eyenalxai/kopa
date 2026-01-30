@@ -85,6 +85,7 @@ const generateGarbage = (count: number) =>
       const randomTime = yield* Random.nextIntBetween(oneYearAgo, now)
 
       entries.push({
+        type: "text",
         value,
         recorded: new Date(randomTime).toISOString(),
         filePath: "",

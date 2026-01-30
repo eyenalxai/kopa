@@ -108,7 +108,7 @@
     "typescript/only-throw-error": "error",
     "typescript/prefer-as-const": "error",
     "typescript/prefer-promise-reject-errors": "error",
-    "typescript/promise-function-async": "error",
+    "typescript/promise-function-async": "off",
     "typescript/require-array-sort-compare": "warn",
     "typescript/require-await": "error",
     "typescript/restrict-plus-operands": "error",

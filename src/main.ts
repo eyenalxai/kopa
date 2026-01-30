@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 
 import { Effect, Layer, Schedule, Stream } from "effect"
@@ -17,6 +18,26 @@ const getScriptPath = () => {
   return fileURLToPath(import.meta.url)
 }
 
+const detectImageFormat = (buffer: Buffer): "png" | "jpeg" | null => {
+  if (buffer.length < 4) return null
+
+  // PNG magic bytes: 0x89 0x50 0x4E 0x47
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return "png"
+  }
+
+  // JPEG magic bytes: 0xFF 0xD8 0xFF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "jpeg"
+  }
+
+  return null
+}
+
+const computeHash = (buffer: Buffer): string => {
+  return createHash("sha256").update(buffer).digest("hex")
+}
+
 const storeProgram = Effect.gen(function* () {
   const history = yield* HistoryService
 
@@ -33,10 +54,25 @@ const storeProgram = Effect.gen(function* () {
     reader.releaseLock()
   }
 
-  const content = Buffer.concat(chunks).toString("utf-8")
+  const buffer = Buffer.concat(chunks)
 
-  if (content.trim()) {
-    yield* history.add(content)
+  if (buffer.length === 0) {
+    return
+  }
+
+  const imageFormat = detectImageFormat(buffer)
+
+  if (imageFormat) {
+    const hash = computeHash(buffer)
+    const timestamp = new Date().toISOString()
+    const displayValue = `📷 ${timestamp}`
+
+    yield* history.addImage(hash, buffer, displayValue)
+  } else {
+    const content = buffer.toString("utf-8")
+    if (content.trim()) {
+      yield* history.addText(content)
+    }
   }
 })
 

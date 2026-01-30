@@ -8,7 +8,7 @@ export class ClipboardService extends Effect.Service<ClipboardService>()("Clipbo
     const wlCopyPath = yield* Config.string("WL_COPY_PATH").pipe(Config.withDefault("wl-copy"))
     const wlPastePath = yield* Config.string("WL_PASTE_PATH").pipe(Config.withDefault("wl-paste"))
 
-    const copy = Effect.fn("ClipboardService.copy")(function* (text: string) {
+    const copyText = Effect.fn("ClipboardService.copyText")(function* (text: string) {
       const proc = Bun.spawn([wlCopyPath], {
         stdin: "pipe",
         stdout: "ignore",
@@ -31,6 +31,24 @@ export class ClipboardService extends Effect.Service<ClipboardService>()("Clipbo
       }
     })
 
-    return { copy, wlCopyPath, wlPastePath }
+    const copyImage = Effect.fn("ClipboardService.copyImage")(function* (filePath: string) {
+      const proc = Bun.spawn([wlCopyPath, "-t", "image/png"], {
+        stdin: Bun.file(filePath),
+        stdout: "ignore",
+        stderr: "ignore",
+      })
+
+      const exitCode = yield* Effect.promise(async () => proc.exited)
+
+      if (exitCode !== 0) {
+        yield* Effect.fail(
+          new ClipboardCopyError({
+            message: `wl-copy exited with code ${exitCode} when copying image`,
+          }),
+        )
+      }
+    })
+
+    return { copyText, copyImage, wlCopyPath, wlPastePath }
   }),
 }) {}

@@ -1,7 +1,9 @@
 import { mkdir, open, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
+import { join } from "node:path"
 
-import { Effect, Config, Schema } from "effect"
+import { Effect, Schema } from "effect"
+import sharp from "sharp"
 
 import { HistoryReadError, HistoryWriteError } from "../errors"
 import { ClipboardHistory, type ClipboardEntry } from "../types"
@@ -19,16 +21,27 @@ const getErrorCode = (error: unknown): string | null => {
 export class HistoryService extends Effect.Service<HistoryService>()("HistoryService", {
   accessors: true,
   effect: Effect.gen(function* () {
-    const dataDir = yield* Config.string("KOPA_DATA_DIR").pipe(
-      Config.withDefault(`${homedir()}/.config/kopa`),
-    )
+    const dataDir = join(homedir(), ".local", "share", "kopa")
 
     const historyFilePath = `${dataDir}/history.json`
     const lockFilePath = `${dataDir}/history.lock`
+    const imagesDirPath = join(dataDir, "images")
     const lockTimeoutMs = 5_000
 
-    const ensureDir = Effect.fn("HistoryService.ensureDir")(function* () {
-      yield* Effect.promise(async () => mkdir(dataDir, { recursive: true }))
+    // Initialize directories at service startup
+    yield* Effect.tryPromise({
+      try: async () => mkdir(dataDir, { recursive: true }),
+      catch: (error) =>
+        new HistoryWriteError({
+          message: `Failed to create data directory: ${String(error)}`,
+        }),
+    })
+    yield* Effect.tryPromise({
+      try: async () => mkdir(imagesDirPath, { recursive: true }),
+      catch: (error) =>
+        new HistoryWriteError({
+          message: `Failed to create images directory: ${String(error)}`,
+        }),
     })
 
     const acquireLock = Effect.fn("HistoryService.acquireLock")(function* () {
@@ -89,7 +102,6 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
     const releaseLockSafe = releaseLock().pipe(Effect.catchAll(() => Effect.void))
 
     const read = Effect.fn("HistoryService.read")(function* () {
-      yield* ensureDir()
       const file = Bun.file(historyFilePath)
       const exists = yield* Effect.promise(async () => file.exists())
 
@@ -116,7 +128,6 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
     })
 
     const write = Effect.fn("HistoryService.write")(function* (history: ClipboardHistory) {
-      yield* ensureDir()
       return yield* Effect.tryPromise({
         try: async () => Bun.write(historyFilePath, JSON.stringify(history, null, 2)),
         catch: (error) =>
@@ -133,7 +144,7 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       return yield* write(history).pipe(Effect.ensuring(releaseLockSafe))
     })
 
-    const add = Effect.fn("HistoryService.add")(function* (value: string) {
+    const addText = Effect.fn("HistoryService.addText")(function* (value: string) {
       const trimmedValue = value.trim()
       if (!trimmedValue) {
         return
@@ -143,11 +154,13 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       return yield* Effect.gen(function* () {
         const history = yield* read()
 
-        if (history.clipboardHistory[0]?.value === trimmedValue) {
+        const firstEntry = history.clipboardHistory[0]
+        if (firstEntry?.type === "text" && firstEntry.value === trimmedValue) {
           return
         }
 
         const newEntry: ClipboardEntry = {
+          type: "text",
           value: trimmedValue,
           recorded: new Date().toISOString(),
           filePath: "",
@@ -158,10 +171,57 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
         }
 
         yield* write(updatedHistory)
-        yield* Effect.log("Added clipboard entry", { valueLength: trimmedValue.length })
+        yield* Effect.log("Added text clipboard entry", { valueLength: trimmedValue.length })
       }).pipe(Effect.ensuring(releaseLockSafe))
     })
 
-    return { read, write, writeLocked, add, historyFilePath }
+    const addImage = Effect.fn("HistoryService.addImage")(function* (
+      hash: string,
+      buffer: Buffer,
+      displayValue: string,
+    ) {
+      yield* acquireLock()
+      return yield* Effect.gen(function* () {
+        const history = yield* read()
+
+        const imagePath = join(imagesDirPath, `${hash}.png`)
+
+        // Check for duplicate by hash (filePath contains the hash)
+        const existingImage = history.clipboardHistory.find(
+          (entry) => entry.type === "image" && entry.filePath === imagePath,
+        )
+        if (existingImage) {
+          yield* Effect.log("Duplicate image detected, skipping", { hash })
+          return
+        }
+
+        // Convert to PNG and save
+        yield* Effect.tryPromise({
+          try: async () => {
+            await sharp(buffer).png().toFile(imagePath)
+          },
+          catch: (error) =>
+            new HistoryWriteError({
+              message: `Failed to save image: ${String(error)}`,
+            }),
+        })
+
+        const newEntry: ClipboardEntry = {
+          type: "image",
+          value: displayValue,
+          recorded: new Date().toISOString(),
+          filePath: imagePath,
+        }
+
+        const updatedHistory = {
+          clipboardHistory: [newEntry, ...history.clipboardHistory],
+        }
+
+        yield* write(updatedHistory)
+        yield* Effect.log("Added image clipboard entry", { hash, path: imagePath })
+      }).pipe(Effect.ensuring(releaseLockSafe))
+    })
+
+    return { read, write, writeLocked, addText, addImage, historyFilePath, imagesDirPath }
   }),
 }) {}
