@@ -105,7 +105,7 @@ const main = Effect.gen(function* () {
   const entries = yield* generateGarbage(count)
 
   const historyService = yield* HistoryService
-  yield* historyService.write({ clipboardHistory: entries })
+  yield* historyService.writeLocked({ clipboardHistory: entries })
 
   yield* Effect.log(`Successfully wrote ${count} entries to history.`)
 }).pipe(Effect.provide(HistoryService.Default))

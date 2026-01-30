@@ -25,12 +25,14 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
 
     const historyFilePath = `${dataDir}/history.json`
     const lockFilePath = `${dataDir}/history.lock`
+    const lockTimeoutMs = 5_000
 
     const ensureDir = Effect.fn("HistoryService.ensureDir")(function* () {
       yield* Effect.promise(async () => mkdir(dataDir, { recursive: true }))
     })
 
     const acquireLock = Effect.fn("HistoryService.acquireLock")(function* () {
+      const startedAt = Date.now()
       while (true) {
         const acquired = yield* Effect.tryPromise({
           try: async () => {
@@ -55,6 +57,14 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
           return
         }
 
+        if (Date.now() - startedAt >= lockTimeoutMs) {
+          return yield* Effect.fail(
+            new HistoryWriteError({
+              message: `Timed out waiting for history lock after ${lockTimeoutMs}ms`,
+            }),
+          )
+        }
+
         yield* Effect.sleep("50 millis")
       }
     })
@@ -76,6 +86,7 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
           }),
       })
     })
+    const releaseLockSafe = releaseLock().pipe(Effect.catchAll(() => Effect.void))
 
     const read = Effect.fn("HistoryService.read")(function* () {
       yield* ensureDir()
@@ -115,6 +126,13 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       })
     })
 
+    const writeLocked = Effect.fn("HistoryService.writeLocked")(function* (
+      history: ClipboardHistory,
+    ) {
+      yield* acquireLock()
+      return yield* write(history).pipe(Effect.ensuring(releaseLockSafe))
+    })
+
     const add = Effect.fn("HistoryService.add")(function* (value: string) {
       const trimmedValue = value.trim()
       if (!trimmedValue) {
@@ -122,7 +140,7 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       }
 
       yield* acquireLock()
-      try {
+      return yield* Effect.gen(function* () {
         const history = yield* read()
 
         if (history.clipboardHistory[0]?.value === trimmedValue) {
@@ -141,11 +159,9 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
 
         yield* write(updatedHistory)
         yield* Effect.log("Added clipboard entry", { valueLength: trimmedValue.length })
-      } finally {
-        yield* releaseLock()
-      }
+      }).pipe(Effect.ensuring(releaseLockSafe))
     })
 
-    return { read, write, add, historyFilePath }
+    return { read, write, writeLocked, add, historyFilePath }
   }),
 }) {}

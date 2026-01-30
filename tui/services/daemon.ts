@@ -1,12 +1,9 @@
-import { homedir } from "node:os"
+import type { ClipboardEntry } from "../../src/types"
+import { Effect } from "effect"
 
-import { Effect, Schema } from "effect"
-
-import { ClipboardHistory as ClipboardHistorySchema, type ClipboardEntry } from "../../src/types"
+import { ClipboardService } from "../../src/services/clipboard-service"
+import { HistoryService } from "../../src/services/history-service"
 export type { ClipboardEntry } from "../../src/types"
-
-const dataDir = process.env.KOPA_DATA_DIR ?? `${homedir()}/.config/kopa`
-const historyFilePath = `${dataDir}/history.json`
 
 /**
  * Filters clipboard entries using fzf's fuzzy matching algorithm.
@@ -61,9 +58,24 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
     const output = Buffer.concat(stdoutChunks).toString("utf-8")
     const matchedValues = output.split("\0").filter((v) => v.length > 0)
 
-    // Map matched values back to entries (preserve order)
-    const matchedSet = new Set(matchedValues)
-    const matchedEntries = entries.filter((e) => matchedSet.has(e.value))
+    // Map matched values back to entries in fzf-ranked order.
+    const entriesByValue = new Map<string, ClipboardEntry[]>()
+    for (const entry of entries) {
+      const existing = entriesByValue.get(entry.value)
+      if (existing) {
+        existing.push(entry)
+      } else {
+        entriesByValue.set(entry.value, [entry])
+      }
+    }
+
+    const matchedEntries: ClipboardEntry[] = []
+    for (const value of matchedValues) {
+      const bucket = entriesByValue.get(value)
+      if (bucket) {
+        matchedEntries.push(...bucket)
+      }
+    }
 
     return matchedEntries
   }).pipe(
@@ -82,25 +94,27 @@ export type EntriesPage = {
   readonly nextCursor: number | null
 }
 
+const describeError = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message
+  }
+  if (typeof error === "string") {
+    return error
+  }
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return "Unknown error"
+  }
+}
+
 export const getEntries = (
   cursor?: number,
   limit: number = 50,
 ): Effect.Effect<EntriesPage, Error> =>
   Effect.gen(function* () {
-    const file = Bun.file(historyFilePath)
-    const exists = yield* Effect.promise(async () => file.exists())
-
-    if (!exists) {
-      return { entries: [], nextCursor: null }
-    }
-
-    const rawHistory = yield* Effect.tryPromise({
-      try: async () => (await file.json()) as unknown,
-      catch: (error) => new Error(`Failed to read history: ${String(error)}`),
-    })
-    const history = yield* Schema.decodeUnknown(ClipboardHistorySchema)(rawHistory).pipe(
-      Effect.mapError((error) => new Error(`Failed to decode history: ${String(error)}`)),
-    )
+    const historyService = yield* HistoryService
+    const history = yield* historyService.read()
 
     let entries = history.clipboardHistory
 
@@ -116,7 +130,10 @@ export const getEntries = (
       entries: resultEntries,
       nextCursor,
     }
-  })
+  }).pipe(
+    Effect.provide(HistoryService.Default),
+    Effect.mapError((error) => new Error(`Failed to read history: ${describeError(error)}`)),
+  )
 
 export const searchEntries = (
   query: string,
@@ -124,20 +141,8 @@ export const searchEntries = (
   limit: number = 50,
 ): Effect.Effect<EntriesPage, Error> =>
   Effect.gen(function* () {
-    const file = Bun.file(historyFilePath)
-    const exists = yield* Effect.promise(async () => file.exists())
-
-    if (!exists) {
-      return { entries: [], nextCursor: null }
-    }
-
-    const rawHistory = yield* Effect.tryPromise({
-      try: async () => (await file.json()) as unknown,
-      catch: (error) => new Error(`Failed to read history: ${String(error)}`),
-    })
-    const history = yield* Schema.decodeUnknown(ClipboardHistorySchema)(rawHistory).pipe(
-      Effect.mapError((error) => new Error(`Failed to decode history: ${String(error)}`)),
-    )
+    const historyService = yield* HistoryService
+    const history = yield* historyService.read()
 
     // Use fzf for fuzzy matching (with fallback to substring search)
     let entries = yield* fzfFilter(query, history.clipboardHistory)
@@ -154,24 +159,13 @@ export const searchEntries = (
       entries: resultEntries,
       nextCursor,
     }
-  })
+  }).pipe(
+    Effect.provide(HistoryService.Default),
+    Effect.mapError((error) => new Error(`Failed to read history: ${describeError(error)}`)),
+  )
 
 export const copyToClipboard = (content: string): Effect.Effect<void, Error> =>
-  Effect.gen(function* () {
-    const proc = Bun.spawn(["wl-copy"], {
-      stdin: "pipe",
-      stdout: "ignore",
-      stderr: "ignore",
-    })
-
-    yield* Effect.promise(async () => {
-      await proc.stdin.write(content)
-      await proc.stdin.end()
-    })
-
-    const exitCode = yield* Effect.promise(async () => proc.exited)
-
-    if (exitCode !== 0) {
-      yield* Effect.fail(new Error(`wl-copy exited with code ${exitCode}`))
-    }
-  })
+  ClipboardService.copy(content).pipe(
+    Effect.provide(ClipboardService.Default),
+    Effect.mapError((error) => new Error(`Failed to copy to clipboard: ${describeError(error)}`)),
+  )

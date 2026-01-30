@@ -76,12 +76,14 @@ const daemonProgram = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => cleanup)
 
-  yield* Effect.sync(() => {
-    const handleSignal = () => {
-      void Effect.runPromise(cleanup)
-    }
+  const waitForSignal = Effect.async<void>((resume) => {
+    const handleSignal = () => resume(Effect.void)
     process.on("SIGINT", handleSignal)
     process.on("SIGTERM", handleSignal)
+    return Effect.sync(() => {
+      process.off("SIGINT", handleSignal)
+      process.off("SIGTERM", handleSignal)
+    })
   })
 
   const textStderrStream = Stream.fromAsyncIterable(textProc.stderr, () => Effect.void).pipe(
@@ -97,7 +99,30 @@ const daemonProgram = Effect.gen(function* () {
   yield* textStderrStream.pipe(Stream.runDrain, Effect.forkDaemon)
   yield* imageStderrStream.pipe(Stream.runDrain, Effect.forkDaemon)
 
-  yield* Effect.repeat(Effect.log("Clipboard monitor running..."), Schedule.fixed("1 minute"))
+  const watchWatcher = (label: string, proc: Bun.Subprocess) =>
+    Effect.promise(async () => proc.exited).pipe(
+      Effect.tap((exitCode) =>
+        Effect.logError(
+          exitCode === 0
+            ? `${label} watcher exited unexpectedly`
+            : `${label} watcher exited with code ${exitCode}`,
+        ),
+      ),
+      Effect.flatMap(() => Effect.fail(new Error(`${label} watcher exited`))),
+    )
+
+  const watcherExit = Effect.raceFirst(
+    watchWatcher("text", textProc),
+    watchWatcher("image", imageProc),
+  )
+
+  yield* Effect.raceFirst(
+    waitForSignal,
+    Effect.raceFirst(
+      watcherExit,
+      Effect.repeat(Effect.log("Clipboard monitor running..."), Schedule.fixed("1 minute")),
+    ),
+  )
 })
 
 const AppLive = Layer.mergeAll(HistoryService.Default, ClipboardService.Default)
