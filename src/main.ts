@@ -1,6 +1,8 @@
+/// <reference types="bun" />
+
 import { createHash } from "node:crypto"
 
-import { Effect, Layer, Schedule, Schema, Stream } from "effect"
+import { Effect, Layer, Schedule, Schema } from "effect"
 
 import { ClipboardService } from "./services/clipboard-service"
 import { HistoryService } from "./services/history-service"
@@ -20,7 +22,7 @@ const isCompiledBinary = () => {
   if (process.env.KOPA_BINARY_PATH !== undefined && process.env.KOPA_BINARY_PATH !== "") {
     return true
   }
-  
+
   // Dev mode: check if not running via bun CLI
   const argv0 = process.argv[0]
   if (argv0 === undefined) return false
@@ -76,27 +78,17 @@ const detectImageFormat = (buffer: Buffer): "png" | "jpeg" | null => {
   return null
 }
 
-const computeHash = (buffer: Buffer): string => {
-  return createHash("sha256").update(buffer).digest("hex")
+const computeHash = (data: Uint8Array): string => {
+  return createHash("sha256").update(data).digest("hex")
 }
 
 const storeProgram = Effect.gen(function* () {
   const history = yield* HistoryService
 
-  const reader = Bun.stdin.stream().getReader()
-  const chunks: Uint8Array[] = []
-
-  try {
-    while (true) {
-      const { done, value } = yield* Effect.promise(async () => reader.read())
-      if (done) break
-      chunks.push(value)
-    }
-  } finally {
-    reader.releaseLock()
-  }
-
-  const buffer = Buffer.concat(chunks)
+  const buffer = yield* Effect.tryPromise({
+    try: async () => Bun.readableStreamToArrayBuffer(Bun.stdin.stream()),
+    catch: (error) => new Error(`Failed to read stdin: ${String(error)}`),
+  }).pipe(Effect.map((ab) => Buffer.from(ab)))
 
   if (buffer.length === 0) {
     return
@@ -105,7 +97,7 @@ const storeProgram = Effect.gen(function* () {
   const imageFormat = detectImageFormat(buffer)
 
   if (imageFormat) {
-    const hash = computeHash(buffer)
+    const hash = computeHash(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength))
     const timestamp = new Date().toISOString()
     const displayValue = `📷 ${timestamp}`
 
@@ -168,18 +160,32 @@ const daemonProgram = Effect.gen(function* () {
     })
   })
 
-  const textStderrStream = Stream.fromAsyncIterable(textProc.stderr, () => Effect.void).pipe(
-    Stream.map((chunk) => new TextDecoder().decode(chunk)),
-    Stream.tap((err) => Effect.logError(`text watcher stderr: ${err}`)),
+  // Log stderr from watcher processes
+  const logStderr = Effect.fn("daemon.logStderr")(
+    (label: string, stream: ReadableStream<Uint8Array>) =>
+      Effect.tryPromise({
+        try: async () => {
+          const chunks = await Bun.readableStreamToArray(stream)
+          const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+          const combined = new Uint8Array(totalLength)
+          let offset = 0
+          for (const chunk of chunks) {
+            combined.set(chunk, offset)
+            offset += chunk.length
+          }
+          return new TextDecoder().decode(combined)
+        },
+        catch: () => Effect.void,
+      }).pipe(
+        Effect.flatMap((text) =>
+          text.trim() ? Effect.logError(`${label} watcher stderr: ${text}`) : Effect.void,
+        ),
+        Effect.catchAll(() => Effect.void),
+      ),
   )
 
-  const imageStderrStream = Stream.fromAsyncIterable(imageProc.stderr, () => Effect.void).pipe(
-    Stream.map((chunk) => new TextDecoder().decode(chunk)),
-    Stream.tap((err) => Effect.logError(`image watcher stderr: ${err}`)),
-  )
-
-  yield* textStderrStream.pipe(Stream.runDrain, Effect.forkDaemon)
-  yield* imageStderrStream.pipe(Stream.runDrain, Effect.forkDaemon)
+  yield* logStderr("text", textProc.stderr).pipe(Effect.forkDaemon)
+  yield* logStderr("image", imageProc.stderr).pipe(Effect.forkDaemon)
 
   const watchWatcher = (label: string, proc: Bun.Subprocess) =>
     Effect.promise(async () => proc.exited).pipe(

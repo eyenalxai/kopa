@@ -1,3 +1,5 @@
+/// <reference types="bun" />
+
 import type { ClipboardEntry } from "../../src/types"
 import { Effect } from "effect"
 
@@ -34,19 +36,13 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
     })
 
     // Read stdout concurrently with waiting for process to exit
-    const stdoutChunks: Uint8Array[] = []
-    const stdoutReader = proc.stdout.getReader()
-
-    const readStdout = Effect.gen(function* () {
-      while (true) {
-        const { done, value } = yield* Effect.promise(async () => stdoutReader.read())
-        if (done) break
-        stdoutChunks.push(value)
-      }
-    })
-
-    // Wait for both stdout reading and process exit
-    const [_, exitCode] = yield* Effect.all([readStdout, Effect.promise(async () => proc.exited)])
+    const [stdoutResult, exitCode] = yield* Effect.all([
+      Effect.tryPromise({
+        try: async () => Bun.readableStreamToArrayBuffer(proc.stdout),
+        catch: (error) => new Error(`Failed to read fzf stdout: ${String(error)}`),
+      }).pipe(Effect.map((ab) => Buffer.from(ab))),
+      Effect.promise(async () => proc.exited),
+    ])
 
     // If fzf failed (non-zero exit code), fall back to substring matching
     if (exitCode !== 0) {
@@ -55,7 +51,7 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
       return entries.filter((e) => e.value.toLowerCase().includes(lowerQuery))
     }
 
-    const output = Buffer.concat(stdoutChunks).toString("utf-8")
+    const output = stdoutResult.toString("utf-8")
     const matchedValues = output.split("\0").filter((v) => v.length > 0)
 
     // Map matched values back to entries in fzf-ranked order.
