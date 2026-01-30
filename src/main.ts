@@ -89,7 +89,7 @@ const storeProgram = Effect.gen(function* () {
   if (imageFormat) {
     const hash = computeHash(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength))
     const timestamp = new Date().toISOString()
-    const displayValue = `📷 ${timestamp}`
+    const displayValue = `📷 image ${timestamp}`
 
     yield* history.addImage(hash, buffer, displayValue)
   } else {
