@@ -1,7 +1,7 @@
+import crypto from "node:crypto"
 import { mkdir, open, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import crypto from "node:crypto"
 
 import { Effect, Schema, Config } from "effect"
 import type sharp from "sharp"
@@ -36,7 +36,8 @@ const decodeEntryField = <A, I>(
 ): Effect.Effect<A, HistoryWriteError> =>
   Schema.decodeUnknown(schema)(value).pipe(
     Effect.mapError(
-      (error) => new HistoryWriteError({ message: `Failed to decode ${fieldName}: ${String(error)}` }),
+      (error) =>
+        new HistoryWriteError({ message: `Failed to decode ${fieldName}: ${String(error)}` }),
     ),
   )
 
@@ -75,7 +76,8 @@ type SharpModule = { default?: typeof sharp } & typeof sharp
 
 const isSharpModule = (mod: unknown): mod is SharpModule => {
   if (typeof mod !== "object" || mod === null) return false
-  const hasDefault = "default" in mod && typeof (mod as { default?: unknown }).default === "function"
+  const hasDefault =
+    "default" in mod && typeof (mod as { default?: unknown }).default === "function"
   const isCallable = typeof mod === "function"
   return hasDefault || isCallable
 }
@@ -91,11 +93,13 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
 
     yield* Effect.tryPromise({
       try: async () => mkdir(dataDir, { recursive: true }),
-      catch: (error) => new HistoryWriteError({ message: `Failed to create data directory: ${String(error)}` }),
+      catch: (error) =>
+        new HistoryWriteError({ message: `Failed to create data directory: ${String(error)}` }),
     })
     yield* Effect.tryPromise({
       try: async () => mkdir(imagesDirPath, { recursive: true }),
-      catch: (error) => new HistoryWriteError({ message: `Failed to create images directory: ${String(error)}` }),
+      catch: (error) =>
+        new HistoryWriteError({ message: `Failed to create images directory: ${String(error)}` }),
     })
 
     const loadSharp = Effect.fn("HistoryService.loadSharp")(function* () {
@@ -108,7 +112,11 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       if (sharpPath !== "") {
         return yield* Effect.tryPromise({
           try: () => load(sharpPath),
-          catch: (error) => new SharpLoadError({ message: `Failed to load sharp: ${String(error)}`, path: sharpPath }),
+          catch: (error) =>
+            new SharpLoadError({
+              message: `Failed to load sharp: ${String(error)}`,
+              path: sharpPath,
+            }),
         })
       }
       return yield* Effect.tryPromise({
@@ -131,11 +139,14 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
               throw error
             }
           },
-          catch: (error) => new HistoryWriteError({ message: `Failed to acquire lock: ${String(error)}` }),
+          catch: (error) =>
+            new HistoryWriteError({ message: `Failed to acquire lock: ${String(error)}` }),
         })
         if (acquired) return
         if (Date.now() - startedAt >= lockTimeoutMs) {
-          return yield* Effect.fail(new HistoryWriteError({ message: `Lock timeout after ${lockTimeoutMs}ms` }))
+          return yield* Effect.fail(
+            new HistoryWriteError({ message: `Lock timeout after ${lockTimeoutMs}ms` }),
+          )
         }
         yield* Effect.sleep("50 millis")
       }
@@ -150,7 +161,8 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
             if (getErrorCode(error) !== "ENOENT") throw error
           }
         },
-        catch: (error) => new HistoryWriteError({ message: `Failed to release lock: ${String(error)}` }),
+        catch: (error) =>
+          new HistoryWriteError({ message: `Failed to release lock: ${String(error)}` }),
       })
     })
     const releaseLockSafe = releaseLock().pipe(Effect.catchAll(() => Effect.void))
@@ -159,15 +171,19 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       const file = Bun.file(historyFilePath)
       const exists = yield* Effect.tryPromise({
         try: async () => file.exists(),
-        catch: (error) => new HistoryReadError({ message: `Failed to check file: ${String(error)}` }),
+        catch: (error) =>
+          new HistoryReadError({ message: `Failed to check file: ${String(error)}` }),
       })
       if (!exists) return { clipboardHistory: [] }
       const rawHistory = yield* Effect.tryPromise({
-        try: async () => await file.json() as unknown,
-        catch: (error) => new HistoryReadError({ message: `Failed to read history: ${String(error)}` }),
+        try: async () => (await file.json()) as unknown,
+        catch: (error) =>
+          new HistoryReadError({ message: `Failed to read history: ${String(error)}` }),
       })
       return yield* Schema.decodeUnknown(ClipboardHistory)(rawHistory).pipe(
-        Effect.mapError((error) => new HistoryReadError({ message: `Failed to decode: ${String(error)}` })),
+        Effect.mapError(
+          (error) => new HistoryReadError({ message: `Failed to decode: ${String(error)}` }),
+        ),
       )
     })
 
@@ -178,7 +194,9 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       })
     })
 
-    const writeLocked = Effect.fn("HistoryService.writeLocked")(function* (history: ClipboardHistory) {
+    const writeLocked = Effect.fn("HistoryService.writeLocked")(function* (
+      history: ClipboardHistory,
+    ) {
       yield* acquireLock()
       return yield* write(history).pipe(Effect.ensuring(releaseLockSafe))
     })
@@ -199,12 +217,18 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       }).pipe(Effect.ensuring(releaseLockSafe))
     })
 
-    const addImage = Effect.fn("HistoryService.addImage")(function* (hash: string, buffer: Buffer, displayValue: string) {
+    const addImage = Effect.fn("HistoryService.addImage")(function* (
+      hash: string,
+      buffer: Buffer,
+      displayValue: string,
+    ) {
       yield* acquireLock()
       return yield* Effect.gen(function* () {
         const history = yield* read()
         const imagePath = join(imagesDirPath, `${hash}.png`)
-        const existingImage = history.clipboardHistory.find((entry) => isImageEntry(entry) && entry.filePath === imagePath)
+        const existingImage = history.clipboardHistory.find(
+          (entry) => isImageEntry(entry) && entry.filePath === imagePath,
+        )
         if (existingImage) {
           yield* Effect.log("Duplicate image, skipping", { hash })
           return
@@ -212,7 +236,8 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
         const sharp = yield* loadSharp()
         yield* Effect.tryPromise({
           try: async () => sharp(buffer).png().toFile(imagePath),
-          catch: (error) => new HistoryWriteError({ message: `Failed to save image: ${String(error)}` }),
+          catch: (error) =>
+            new HistoryWriteError({ message: `Failed to save image: ${String(error)}` }),
         })
         const id = crypto.randomUUID()
         const recorded = new Date().toISOString()

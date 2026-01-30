@@ -1,4 +1,5 @@
 import crypto from "node:crypto"
+
 import { BunRuntime } from "@effect/platform-bun"
 import { Effect, Random, Schema } from "effect"
 
@@ -38,9 +39,25 @@ const generateGarbageValue = (type: (typeof GARBAGE_TYPES)[number], length: numb
       }
       case "lorem": {
         const words = [
-          "lorem", "ipsum", "dolor", "sit", "amet", "consectetur",
-          "adipiscing", "elit", "sed", "do", "eiusmod", "tempor",
-          "incididunt", "ut", "labore", "et", "dolore", "magna", "aliqua",
+          "lorem",
+          "ipsum",
+          "dolor",
+          "sit",
+          "amet",
+          "consectetur",
+          "adipiscing",
+          "elit",
+          "sed",
+          "do",
+          "eiusmod",
+          "tempor",
+          "incididunt",
+          "ut",
+          "labore",
+          "et",
+          "dolore",
+          "magna",
+          "aliqua",
         ]
         let res = ""
         while (res.length < length) {
@@ -99,7 +116,8 @@ const generateGarbage = (count: number) =>
 const main = Effect.gen(function* () {
   const args = process.argv.slice(2)
   const countArg = args[0]
-  const parsed = countArg !== null && countArg !== undefined && countArg !== "" ? parseInt(countArg, 10) : NaN
+  const parsed =
+    countArg !== null && countArg !== undefined && countArg !== "" ? parseInt(countArg, 10) : NaN
   const count = Number.isNaN(parsed) || parsed <= 0 ? 100_000 : parsed
 
   yield* Effect.log(`Populating history with ${count} entries...`)

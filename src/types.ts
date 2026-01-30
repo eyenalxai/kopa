@@ -66,8 +66,7 @@ export type ClipboardEntry = Schema.Schema.Type<typeof ClipboardEntry>
 // Type Guards
 // ============================================================================
 
-export const isTextEntry = (entry: ClipboardEntry): entry is TextEntry =>
-  entry._tag === "TextEntry"
+export const isTextEntry = (entry: ClipboardEntry): entry is TextEntry => entry._tag === "TextEntry"
 
 export const isImageEntry = (entry: ClipboardEntry): entry is ImageEntry =>
   entry._tag === "ImageEntry"
