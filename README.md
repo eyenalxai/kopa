@@ -3,16 +3,19 @@
 Clipboard manager for Wayland
 
 ### Start the daemon
+
 ```sh
 kopa --daemon
 ```
 
 ### Launch the TUI
+
 ```sh
 kopa
 ```
 
 ### Controls
+
 ```
 Tab         Switch focus
 ↑/↓         Navigate
@@ -21,5 +24,6 @@ Ctrl+C      Exit
 ```
 
 ### Formats
+
 - Text
 - Images (PNG, JPEG, WebP)
