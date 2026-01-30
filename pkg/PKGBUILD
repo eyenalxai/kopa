@@ -1,0 +1,54 @@
+# Maintainer: roehistat <mail at iyxeyl.me>
+# Local development PKGBUILD - builds from local source without pushing to GitHub
+
+pkgname=kopa
+pkgver=9.9.9
+pkgrel=1
+pkgdesc="TUI clipboard manager for Wayland (local dev build)"
+arch=('x86_64')
+url="https://github.com/eyenalxai/kopa"
+license=('GPL3')
+depends=('gcc-libs' 'sqlite' 'wayland')
+makedepends=('bun')
+options=('!debug' '!strip')
+
+# No source array - we build directly from the local directory
+source=("kopa-daemon.service")
+sha256sums=('SKIP')
+
+prepare() {
+  # Build from the source root (parent of pkg/ directory)
+  cd "$startdir/.."
+  bun install --frozen-lockfile --production
+}
+
+build() {
+  cd "$startdir/.."
+  bun build --compile --target=bun-linux-x64-modern ./src/main.ts --outfile ./dist/kopa
+}
+
+package() {
+  cd "$startdir/.."
+
+  # Install the compiled binary
+  install -Dm0755 -t "$pkgdir/usr/bin/" "dist/kopa"
+
+  # Copy sharp's native modules (required for bun compile bug workaround)
+  # See: https://github.com/oven-sh/bun/issues/15374
+  install -d "$pkgdir/usr/lib/kopa/node_modules/@img"
+  cp -r "node_modules/@img/sharp-libvips-linux-x64" "$pkgdir/usr/lib/kopa/node_modules/@img/"
+  cp -r "node_modules/@img/sharp-linux-x64" "$pkgdir/usr/lib/kopa/node_modules/@img/"
+
+  # Copy sharp dependencies
+  cp -r "node_modules/@img/colour" "$pkgdir/usr/lib/kopa/node_modules/@img/"
+
+  # Copy sharp package itself
+  cp -r "node_modules/sharp" "$pkgdir/usr/lib/kopa/node_modules/"
+  
+  # Copy sharp's JS dependencies
+  cp -r "node_modules/detect-libc" "$pkgdir/usr/lib/kopa/node_modules/"
+  cp -r "node_modules/semver" "$pkgdir/usr/lib/kopa/node_modules/"
+
+  install -Dm0644 -t "$pkgdir/usr/lib/systemd/user/" "$srcdir/kopa-daemon.service"
+  install -Dm0644 -t "$pkgdir/usr/share/licenses/$pkgname/" LICENSE
+}

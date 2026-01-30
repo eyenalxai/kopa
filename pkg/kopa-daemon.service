@@ -1,0 +1,17 @@
+[Unit]
+Description=Kopa Clipboard Manager Daemon
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/kopa --daemon
+Restart=on-failure
+RestartSec=5
+PassEnvironment=WAYLAND_DISPLAY XDG_RUNTIME_DIR
+Environment="KOPA_BINARY_PATH=/usr/bin/kopa"
+Environment="NODE_PATH=/usr/lib/kopa/node_modules"
+Environment="SHARP_PATH=/usr/lib/kopa/node_modules/sharp"
+
+[Install]
+WantedBy=graphical-session.target

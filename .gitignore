@@ -6,6 +6,11 @@ out
 dist
 *.tgz
 
+# Arch Linux packaging - only keep PKGBUILD and service file
+pkg/*
+!pkg/PKGBUILD
+!pkg/kopa-daemon.service
+
 # code coverage
 coverage
 *.lcov
