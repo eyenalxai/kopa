@@ -1,9 +1,10 @@
-import { createHash } from "node:crypto"
-
-import { Effect, Layer, Schedule, Schema } from "effect"
+import { BunRuntime } from "@effect/platform-bun"
+import { Effect, Schedule, Layer, Config, Schema } from "effect"
 
 import { ClipboardService } from "./services/clipboard-service"
 import { HistoryService } from "./services/history-service"
+import { computeHash } from "./utils/hash"
+import { detectImageFormat } from "./utils/image"
 
 const args = new Set(process.argv.slice(2))
 const isDaemon = args.has("--daemon")
@@ -15,26 +16,33 @@ export class ScriptPathError extends Schema.TaggedError<ScriptPathError>()("Scri
   argv1: Schema.optional(Schema.String),
 }) {}
 
-const isCompiledBinary = () => {
-  // Production mode: KOPA_BINARY_PATH env var is set
-  if (process.env.KOPA_BINARY_PATH !== undefined && process.env.KOPA_BINARY_PATH !== "") {
+export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
+  message: Schema.String,
+}) {}
+
+export class DaemonError extends Schema.TaggedError<DaemonError>()("DaemonError", {
+  message: Schema.String,
+}) {}
+
+const isCompiledBinary = Effect.fn("BinaryMode.isCompiledBinary")(function* () {
+  const binaryPath = yield* Config.string("KOPA_BINARY_PATH").pipe(Config.withDefault(""))
+  if (binaryPath !== "") {
     return true
   }
 
-  // Dev mode: check if not running via bun CLI
   const argv0 = process.argv[0]
   if (argv0 === undefined) return false
   return argv0 !== "bun" && !argv0.endsWith("/bun")
-}
+})
 
 const getScriptPath = Effect.fn("ScriptPath.getScriptPath")(function* () {
-  // Check for production path via environment variable (avoids hardcoded paths)
-  const binaryPath = process.env.KOPA_BINARY_PATH
-  if (binaryPath !== undefined && binaryPath !== "") {
+  const binaryPath = yield* Config.string("KOPA_BINARY_PATH").pipe(Config.withDefault(""))
+  if (binaryPath !== "") {
     return binaryPath
   }
 
-  if (isCompiledBinary()) {
+  const compiled = yield* isCompiledBinary()
+  if (compiled) {
     const argv0 = process.argv[0]
     if (argv0 !== undefined && argv0 !== "") {
       return argv0
@@ -47,6 +55,7 @@ const getScriptPath = Effect.fn("ScriptPath.getScriptPath")(function* () {
       }),
     )
   }
+
   const argv1 = process.argv[1]
   if (argv1 !== undefined && argv1 !== "") {
     return argv1
@@ -60,32 +69,15 @@ const getScriptPath = Effect.fn("ScriptPath.getScriptPath")(function* () {
   )
 })
 
-const detectImageFormat = (buffer: Buffer): "png" | "jpeg" | null => {
-  if (buffer.length < 4) return null
-
-  // PNG magic bytes: 0x89 0x50 0x4E 0x47
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
-    return "png"
-  }
-
-  // JPEG magic bytes: 0xFF 0xD8 0xFF
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return "jpeg"
-  }
-
-  return null
-}
-
-const computeHash = (data: Uint8Array): string => {
-  return createHash("sha256").update(data).digest("hex")
-}
-
 const storeProgram = Effect.gen(function* () {
   const history = yield* HistoryService
 
   const buffer = yield* Effect.tryPromise({
     try: async () => Bun.readableStreamToArrayBuffer(Bun.stdin.stream()),
-    catch: (error) => new Error(`Failed to read stdin: ${String(error)}`),
+    catch: (error) =>
+      new StoreError({
+        message: `Failed to read stdin: ${String(error)}`,
+      }),
   }).pipe(Effect.map((ab) => Buffer.from(ab)))
 
   if (buffer.length === 0) {
@@ -114,9 +106,8 @@ const daemonProgram = Effect.gen(function* () {
   yield* Effect.log("Starting clipboard monitor...")
 
   const scriptPath = yield* getScriptPath()
-  const compiled = isCompiledBinary()
+  const compiled = yield* isCompiledBinary()
 
-  // Build spawn args: compiled binary runs directly, dev mode uses "bun run"
   const textSpawnArgs = compiled
     ? [clipboard.wlPastePath, "--type", "text", "--watch", scriptPath, "--store"]
     : [clipboard.wlPastePath, "--type", "text", "--watch", "bun", "run", scriptPath, "--store"]
@@ -158,7 +149,6 @@ const daemonProgram = Effect.gen(function* () {
     })
   })
 
-  // Log stderr from watcher processes
   const logStderr = Effect.fn("daemon.logStderr")(
     (label: string, stream: ReadableStream<Uint8Array>) =>
       Effect.tryPromise({
@@ -194,7 +184,7 @@ const daemonProgram = Effect.gen(function* () {
             : `${label} watcher exited with code ${exitCode}`,
         ),
       ),
-      Effect.flatMap(() => Effect.fail(new Error(`${label} watcher exited`))),
+      Effect.flatMap(() => Effect.fail(new DaemonError({ message: `${label} watcher exited` }))),
     )
 
   const watcherExit = Effect.raceFirst(
@@ -211,22 +201,50 @@ const daemonProgram = Effect.gen(function* () {
   )
 })
 
+const tuiProgram = Effect.tryPromise({
+  try: async () => {
+    await import("../tui/index")
+  },
+  catch: (error) => new Error(`Failed to start TUI: ${String(error)}`),
+})
+
+const mainProgram = Effect.gen(function* () {
+  if (isStore) {
+    yield* storeProgram
+  } else if (isDaemon) {
+    yield* daemonProgram
+  } else {
+    yield* tuiProgram
+  }
+})
+
 const AppLive = Layer.mergeAll(HistoryService.Default, ClipboardService.Default)
 
-if (isStore) {
-  try {
-    await Effect.runPromise(storeProgram.pipe(Effect.provide(AppLive)))
-  } catch (error: unknown) {
-    console.error("Store error:", error)
-    process.exit(1)
+const program = mainProgram.pipe(Effect.provide(AppLive), Effect.scoped)
+
+const describeError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
   }
-} else if (isDaemon) {
-  try {
-    await Effect.runPromise(daemonProgram.pipe(Effect.provide(AppLive), Effect.scoped))
-  } catch (error: unknown) {
-    console.error("Daemon error:", error)
-    process.exit(1)
+  if (typeof error === "string") {
+    return error
   }
-} else {
-  await import("../tui/index")
+  if (error === null || error === undefined) {
+    return "Unknown error"
+  }
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return "Unknown error"
+  }
 }
+
+program.pipe(
+  Effect.catchAll((error) =>
+    Effect.gen(function* () {
+      yield* Effect.logError("Fatal error:", { error: describeError(error) })
+      return yield* Effect.fail(error)
+    }),
+  ),
+  BunRuntime.runMain,
+)

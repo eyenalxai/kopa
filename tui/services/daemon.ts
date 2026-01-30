@@ -1,9 +1,28 @@
 import type { ClipboardEntry } from "../../src/types"
-import { Effect } from "effect"
+import { Effect, Schema, ConfigError } from "effect"
 
+import { HistoryReadError, HistoryWriteError, ClipboardCopyError } from "../../src/errors"
 import { ClipboardService } from "../../src/services/clipboard-service"
 import { HistoryService } from "../../src/services/history-service"
 export type { ClipboardEntry } from "../../src/types"
+
+export class FzfError extends Schema.TaggedError<FzfError>()("FzfError", {
+  message: Schema.String,
+}) {}
+
+export class InvalidImagePathError extends Schema.TaggedError<InvalidImagePathError>()(
+  "InvalidImagePathError",
+  {
+    filePath: Schema.String,
+    imagesDirPath: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+export type EntriesPage = {
+  readonly entries: ReadonlyArray<ClipboardEntry>
+  readonly nextCursor: number | null
+}
 
 /**
  * Filters clipboard entries using fzf's fuzzy matching algorithm.
@@ -28,18 +47,33 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
 
     // Write entries to stdin (NUL-delimited for multi-line support)
     const input = entries.map((e) => e.value).join("\0")
-    yield* Effect.promise(async () => {
-      await proc.stdin.write(input)
-      await proc.stdin.end()
+    yield* Effect.tryPromise({
+      try: async () => {
+        await proc.stdin.write(input)
+        await proc.stdin.end()
+      },
+      catch: (error) =>
+        new FzfError({
+          message: `Failed to write to fzf stdin: ${String(error)}`,
+        }),
     })
 
     // Read stdout concurrently with waiting for process to exit
     const [stdoutResult, exitCode] = yield* Effect.all([
       Effect.tryPromise({
         try: async () => Bun.readableStreamToArrayBuffer(proc.stdout),
-        catch: (error) => new Error(`Failed to read fzf stdout: ${String(error)}`),
+        catch: (error) =>
+          new FzfError({
+            message: `Failed to read fzf stdout: ${String(error)}`,
+          }),
       }).pipe(Effect.map((ab) => Buffer.from(ab))),
-      Effect.promise(async () => proc.exited),
+      Effect.tryPromise({
+        try: async () => proc.exited,
+        catch: (error) =>
+          new FzfError({
+            message: `Failed to wait for fzf process: ${String(error)}`,
+          }),
+      }),
     ])
 
     // If fzf failed (non-zero exit code), fall back to substring matching
@@ -73,9 +107,9 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
 
     return matchedEntries
   }).pipe(
-    Effect.catchAll(() =>
+    Effect.catchTag("FzfError", (err) =>
       Effect.gen(function* () {
-        yield* Effect.log("fzf error, falling back to substring search")
+        yield* Effect.log("fzf error, falling back to substring search", { error: err.message })
         const lowerQuery = query.toLowerCase()
         return entries.filter((e) => e.value.toLowerCase().includes(lowerQuery))
       }),
@@ -83,29 +117,10 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
   )
 })
 
-export type EntriesPage = {
-  readonly entries: ReadonlyArray<ClipboardEntry>
-  readonly nextCursor: number | null
-}
-
-const describeError = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message
-  }
-  if (typeof error === "string") {
-    return error
-  }
-  try {
-    return JSON.stringify(error)
-  } catch {
-    return "Unknown error"
-  }
-}
-
 export const getEntries = (
   cursor?: number,
   limit: number = 50,
-): Effect.Effect<EntriesPage, Error> =>
+): Effect.Effect<EntriesPage, HistoryReadError | HistoryWriteError> =>
   Effect.gen(function* () {
     const historyService = yield* HistoryService
     const history = yield* historyService.read()
@@ -124,16 +139,13 @@ export const getEntries = (
       entries: resultEntries,
       nextCursor,
     }
-  }).pipe(
-    Effect.provide(HistoryService.Default),
-    Effect.mapError((error) => new Error(`Failed to read history: ${describeError(error)}`)),
-  )
+  }).pipe(Effect.provide(HistoryService.Default))
 
 export const searchEntries = (
   query: string,
   cursor?: number,
   limit: number = 50,
-): Effect.Effect<EntriesPage, Error> =>
+): Effect.Effect<EntriesPage, HistoryReadError | HistoryWriteError | FzfError> =>
   Effect.gen(function* () {
     const historyService = yield* HistoryService
     const history = yield* historyService.read()
@@ -153,12 +165,14 @@ export const searchEntries = (
       entries: resultEntries,
       nextCursor,
     }
-  }).pipe(
-    Effect.provide(HistoryService.Default),
-    Effect.mapError((error) => new Error(`Failed to read history: ${describeError(error)}`)),
-  )
+  }).pipe(Effect.provide(HistoryService.Default))
 
-export const copyToClipboard = (entry: ClipboardEntry): Effect.Effect<void, Error> =>
+export const copyToClipboard = (
+  entry: ClipboardEntry,
+): Effect.Effect<
+  void,
+  InvalidImagePathError | HistoryWriteError | ConfigError.ConfigError | ClipboardCopyError
+> =>
   Effect.gen(function* () {
     if (entry.type === "image") {
       const historyService = yield* HistoryService
@@ -167,7 +181,11 @@ export const copyToClipboard = (entry: ClipboardEntry): Effect.Effect<void, Erro
       // Validate filePath is within the images directory (security check)
       if (!entry.filePath.startsWith(imagesDirPath)) {
         return yield* Effect.fail(
-          new Error(`Invalid image path: ${entry.filePath} is not within ${imagesDirPath}`),
+          new InvalidImagePathError({
+            filePath: entry.filePath,
+            imagesDirPath,
+            message: `Invalid image path: ${entry.filePath} is not within ${imagesDirPath}`,
+          }),
         )
       }
 
@@ -175,8 +193,4 @@ export const copyToClipboard = (entry: ClipboardEntry): Effect.Effect<void, Erro
     } else {
       yield* ClipboardService.copyText(entry.value)
     }
-  }).pipe(
-    Effect.provide(HistoryService.Default),
-    Effect.provide(ClipboardService.Default),
-    Effect.mapError((error) => new Error(`Failed to copy to clipboard: ${describeError(error)}`)),
-  )
+  }).pipe(Effect.provide(HistoryService.Default), Effect.provide(ClipboardService.Default))

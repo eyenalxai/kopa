@@ -2,7 +2,7 @@ import { mkdir, open, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-import { Effect, Schema } from "effect"
+import { Effect, Schema, Config } from "effect"
 import type sharp from "sharp"
 
 // Type definition for dynamically imported sharp module
@@ -30,9 +30,9 @@ const isSharpModule = (mod: unknown): mod is SharpModule => {
 // Sharp loader that supports both dev and production (compiled binary)
 // Production path is set via SHARP_PATH environment variable
 const loadSharp = Effect.fn("HistoryService.loadSharp")(function* () {
-  const sharpPath = process.env.SHARP_PATH
+  const sharpPath = yield* Config.string("SHARP_PATH").pipe(Config.withDefault(""))
 
-  if (sharpPath !== undefined && sharpPath !== "") {
+  if (sharpPath !== "") {
     const sharpModule = yield* Effect.tryPromise({
       try: async () => {
         const mod: unknown = await import(sharpPath)
@@ -169,7 +169,13 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
 
     const read = Effect.fn("HistoryService.read")(function* () {
       const file = Bun.file(historyFilePath)
-      const exists = yield* Effect.promise(async () => file.exists())
+      const exists = yield* Effect.tryPromise({
+        try: async () => file.exists(),
+        catch: (error) =>
+          new HistoryReadError({
+            message: `Failed to check file existence: ${String(error)}`,
+          }),
+      })
 
       if (!exists) {
         return { clipboardHistory: [] }
