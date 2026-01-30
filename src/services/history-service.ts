@@ -209,11 +209,20 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
         const history = yield* read()
         const firstEntry = history.clipboardHistory[0]
         if (firstEntry && isTextEntry(firstEntry) && firstEntry.value === trimmedValue) return
+        const existingIndex = history.clipboardHistory.findIndex(
+          (entry) => isTextEntry(entry) && entry.value === trimmedValue,
+        )
         const id = crypto.randomUUID()
         const recorded = new Date().toISOString()
         const newEntry = yield* createTextEntry(trimmedValue, id, recorded)
-        yield* write({ clipboardHistory: [newEntry, ...history.clipboardHistory] })
-        yield* Effect.log("Added text entry", { valueLength: trimmedValue.length })
+        if (existingIndex >= 0) {
+          const filtered = history.clipboardHistory.filter((_, i) => i !== existingIndex)
+          yield* write({ clipboardHistory: [newEntry, ...filtered] })
+          yield* Effect.log("Bumped text entry to top", { valueLength: trimmedValue.length })
+        } else {
+          yield* write({ clipboardHistory: [newEntry, ...history.clipboardHistory] })
+          yield* Effect.log("Added text entry", { valueLength: trimmedValue.length })
+        }
       }).pipe(Effect.ensuring(releaseLockSafe))
     })
 
@@ -226,14 +235,23 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       return yield* Effect.gen(function* () {
         const history = yield* read()
         const imagePath = join(imagesDirPath, `${hash}.png`)
-        const existingImage = history.clipboardHistory.find(
+        const existingIndex = history.clipboardHistory.findIndex(
           (entry) => isImageEntry(entry) && entry.filePath === imagePath,
         )
-        if (existingImage) {
-          yield* Effect.log("Duplicate image, skipping", { hash })
+        const existingImage = existingIndex >= 0 ? history.clipboardHistory[existingIndex] : null
+        const firstEntry = history.clipboardHistory[0]
+        if (firstEntry && isImageEntry(firstEntry) && firstEntry.filePath === imagePath) {
+          yield* Effect.log("Duplicate image already at top, skipping", { hash })
           return
         }
         const sharp = yield* loadSharp()
+        if (existingImage && isImageEntry(existingImage)) {
+          yield* Effect.tryPromise({
+            try: async () => unlink(existingImage.filePath),
+            catch: (error) =>
+              new HistoryWriteError({ message: `Failed to delete old image: ${String(error)}` }),
+          })
+        }
         yield* Effect.tryPromise({
           try: async () => sharp(buffer).png().toFile(imagePath),
           catch: (error) =>
@@ -242,8 +260,14 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
         const id = crypto.randomUUID()
         const recorded = new Date().toISOString()
         const newEntry = yield* createImageEntry(displayValue, id, recorded, imagePath, hash)
-        yield* write({ clipboardHistory: [newEntry, ...history.clipboardHistory] })
-        yield* Effect.log("Added image entry", { hash, path: imagePath })
+        if (existingIndex >= 0) {
+          const filtered = history.clipboardHistory.filter((_, i) => i !== existingIndex)
+          yield* write({ clipboardHistory: [newEntry, ...filtered] })
+          yield* Effect.log("Bumped image entry to top", { hash, path: imagePath })
+        } else {
+          yield* write({ clipboardHistory: [newEntry, ...history.clipboardHistory] })
+          yield* Effect.log("Added image entry", { hash, path: imagePath })
+        }
       }).pipe(Effect.ensuring(releaseLockSafe))
     })
 
