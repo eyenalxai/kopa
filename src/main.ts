@@ -22,6 +22,12 @@ const isCompiledBinary = () => {
 }
 
 const getScriptPath = Effect.fn("ScriptPath.getScriptPath")(function* () {
+  // Check for production path via environment variable (avoids hardcoded paths)
+  const binaryPath = process.env.KOPA_BINARY_PATH
+  if (binaryPath !== undefined && binaryPath !== "") {
+    return binaryPath
+  }
+  
   if (isCompiledBinary()) {
     const argv0 = process.argv[0]
     if (argv0 !== undefined && argv0 !== "") {
