@@ -32,7 +32,7 @@ export const ClipboardList = ({
   const theme = useTheme()
   const toast = useToast()
   const selectRef = useRef<SelectRenderable>(null)
-  const [focusedElement, setFocusedElement] = useState<"input" | "list">("input")
+  const [focusedElement, setFocusedElement] = useState<"input" | "list">("list")
 
   const hasEntries = entries.length > 0
   const options = useMemo(
