@@ -1,5 +1,3 @@
-/// <reference types="bun" />
-
 import type { ClipboardEntry } from "../../src/types"
 import { Effect } from "effect"
 

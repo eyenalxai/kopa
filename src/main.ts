@@ -1,5 +1,3 @@
-/// <reference types="bun" />
-
 import { createHash } from "node:crypto"
 
 import { Effect, Layer, Schedule, Schema } from "effect"
