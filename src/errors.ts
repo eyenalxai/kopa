@@ -17,3 +17,8 @@ export class HistoryWriteError extends Schema.TaggedError<HistoryWriteError>()(
     message: Schema.String,
   },
 ) {}
+
+export class SharpLoadError extends Schema.TaggedError<SharpLoadError>()("SharpLoadError", {
+  message: Schema.String,
+  path: Schema.optional(Schema.String),
+}) {}

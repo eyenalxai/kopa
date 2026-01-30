@@ -3,9 +3,74 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 
 import { Effect, Schema } from "effect"
-import sharp from "sharp"
+import type sharp from "sharp"
 
-import { HistoryReadError, HistoryWriteError } from "../errors"
+// Type definition for dynamically imported sharp module
+// Sharp uses CommonJS (module.exports), so when imported via ESM it has both:
+// - mod.default: the sharp function (ESM interop)
+// - mod: the sharp function itself (when imported directly)
+type SharpModule = {
+  default?: typeof sharp
+} & typeof sharp
+
+// Type guard to validate that a dynamically imported module is a valid sharp module
+const isSharpModule = (mod: unknown): mod is SharpModule => {
+  if (typeof mod !== "object" || mod === null) {
+    return false
+  }
+  
+  // Check if it's callable (the sharp function) or has a default export
+  const hasDefault = "default" in mod && typeof (mod as { default?: unknown }).default === "function"
+  const isCallable = typeof mod === "function"
+  
+  return hasDefault || isCallable
+}
+
+// Sharp loader that supports both dev and production (compiled binary)
+// Production path is set via SHARP_PATH environment variable
+const loadSharp = Effect.fn("HistoryService.loadSharp")(function* () {
+  const sharpPath = process.env.SHARP_PATH
+  
+  if (sharpPath !== undefined && sharpPath !== "") {
+    const sharpModule = yield* Effect.tryPromise({
+      try: async () => {
+        const mod: unknown = await import(sharpPath)
+        
+        if (!isSharpModule(mod)) {
+          throw new Error(`Module at ${sharpPath} is not a valid sharp module`)
+        }
+        
+        return mod.default ?? mod
+      },
+      catch: (error: unknown) =>
+        new SharpLoadError({
+          message: `Failed to load sharp from SHARP_PATH: ${String(error)}`,
+          path: sharpPath,
+        }),
+    })
+    return sharpModule
+  }
+  
+  // Fall back to default import (works in dev mode)
+  const sharpModule = yield* Effect.tryPromise({
+    try: async () => {
+      const mod: unknown = await import("sharp")
+      
+      if (!isSharpModule(mod)) {
+        throw new Error("Default sharp module is not valid")
+      }
+      
+      return mod.default ?? mod
+    },
+    catch: (error: unknown) =>
+      new SharpLoadError({
+        message: `Failed to load sharp from default path: ${String(error)}`,
+      }),
+  })
+  return sharpModule
+})
+
+import { HistoryReadError, HistoryWriteError, SharpLoadError } from "../errors"
 import { ClipboardHistory, type ClipboardEntry } from "../types"
 
 const hasErrorCode = (value: unknown): value is { code?: unknown } =>
@@ -195,7 +260,8 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
           return
         }
 
-        // Convert to PNG and save
+        // Load sharp and convert to PNG
+        const sharp = yield* loadSharp()
         yield* Effect.tryPromise({
           try: async () => {
             await sharp(buffer).png().toFile(imagePath)
