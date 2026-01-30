@@ -77,8 +77,8 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
       }),
     ])
 
-    // If fzf failed (non-zero exit code), fall back to substring matching
-    if (exitCode !== 0) {
+    // Exit code 2 = fzf error, exit code 1 = no matches (normal). Only fallback on actual errors
+    if (exitCode === 2) {
       yield* Effect.log("fzf not available, falling back to substring search")
       const lowerQuery = query.toLowerCase()
       return entries.filter((e) => e.value.toLowerCase().includes(lowerQuery))
