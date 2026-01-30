@@ -18,11 +18,12 @@ const isSharpModule = (mod: unknown): mod is SharpModule => {
   if (typeof mod !== "object" || mod === null) {
     return false
   }
-  
+
   // Check if it's callable (the sharp function) or has a default export
-  const hasDefault = "default" in mod && typeof (mod as { default?: unknown }).default === "function"
+  const hasDefault =
+    "default" in mod && typeof (mod as { default?: unknown }).default === "function"
   const isCallable = typeof mod === "function"
-  
+
   return hasDefault || isCallable
 }
 
@@ -30,16 +31,16 @@ const isSharpModule = (mod: unknown): mod is SharpModule => {
 // Production path is set via SHARP_PATH environment variable
 const loadSharp = Effect.fn("HistoryService.loadSharp")(function* () {
   const sharpPath = process.env.SHARP_PATH
-  
+
   if (sharpPath !== undefined && sharpPath !== "") {
     const sharpModule = yield* Effect.tryPromise({
       try: async () => {
         const mod: unknown = await import(sharpPath)
-        
+
         if (!isSharpModule(mod)) {
           throw new Error(`Module at ${sharpPath} is not a valid sharp module`)
         }
-        
+
         return mod.default ?? mod
       },
       catch: (error: unknown) =>
@@ -50,16 +51,16 @@ const loadSharp = Effect.fn("HistoryService.loadSharp")(function* () {
     })
     return sharpModule
   }
-  
+
   // Fall back to default import (works in dev mode)
   const sharpModule = yield* Effect.tryPromise({
     try: async () => {
       const mod: unknown = await import("sharp")
-      
+
       if (!isSharpModule(mod)) {
         throw new Error("Default sharp module is not valid")
       }
-      
+
       return mod.default ?? mod
     },
     catch: (error: unknown) =>
