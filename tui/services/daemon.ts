@@ -4,6 +4,7 @@ import { Effect, Schema, ConfigError } from "effect"
 import { HistoryReadError, HistoryWriteError, ClipboardCopyError } from "../../src/errors"
 import { ClipboardService } from "../../src/services/clipboard-service"
 import { HistoryService } from "../../src/services/history-service"
+import { isImageEntry } from "../../src/types"
 export type { ClipboardEntry } from "../../src/types"
 
 export class FzfError extends Schema.TaggedError<FzfError>()("FzfError", {
@@ -174,7 +175,7 @@ export const copyToClipboard = (
   InvalidImagePathError | HistoryWriteError | ConfigError.ConfigError | ClipboardCopyError
 > =>
   Effect.gen(function* () {
-    if (entry.type === "image") {
+    if (isImageEntry(entry)) {
       const historyService = yield* HistoryService
       const imagesDirPath = historyService.imagesDirPath
 

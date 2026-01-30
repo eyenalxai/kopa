@@ -9,16 +9,16 @@ const logPath = join(homedir(), ".local/share/kopa/kopa.log")
 // Ensure log directory exists synchronously
 try {
   mkdirSync(dirname(logPath), { recursive: true })
-} catch {
-  // Directory may already exist, ignore
+} catch (error) {
+  console.error("Failed to create log directory:", error)
 }
 
 const fileLogger = Logger.make<unknown, void>(({ date, logLevel, message }) => {
   const line = `[${date.toISOString()}] [${logLevel.label}] ${String(message)}\n`
   try {
     appendFileSync(logPath, line)
-  } catch {
-    // If file logging fails, we can't really do much - silently fail
+  } catch (error) {
+    console.error("Failed to write to log file:", error)
   }
 })
 

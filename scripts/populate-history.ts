@@ -1,8 +1,9 @@
-import type { ClipboardEntry } from "../src/types"
+import crypto from "node:crypto"
 import { BunRuntime } from "@effect/platform-bun"
-import { Effect, Random } from "effect"
+import { Effect, Random, Schema } from "effect"
 
 import { HistoryService } from "../src/services/history-service"
+import { TextEntry, EntryId, IsoDateString, type ClipboardHistory } from "../src/types"
 
 const GARBAGE_TYPES = ["alphanumeric", "lorem", "numbers", "special"] as const
 
@@ -37,25 +38,9 @@ const generateGarbageValue = (type: (typeof GARBAGE_TYPES)[number], length: numb
       }
       case "lorem": {
         const words = [
-          "lorem",
-          "ipsum",
-          "dolor",
-          "sit",
-          "amet",
-          "consectetur",
-          "adipiscing",
-          "elit",
-          "sed",
-          "do",
-          "eiusmod",
-          "tempor",
-          "incididunt",
-          "ut",
-          "labore",
-          "et",
-          "dolore",
-          "magna",
-          "aliqua",
+          "lorem", "ipsum", "dolor", "sit", "amet", "consectetur",
+          "adipiscing", "elit", "sed", "do", "eiusmod", "tempor",
+          "incididunt", "ut", "labore", "et", "dolore", "magna", "aliqua",
         ]
         let res = ""
         while (res.length < length) {
@@ -67,9 +52,28 @@ const generateGarbageValue = (type: (typeof GARBAGE_TYPES)[number], length: numb
     }
   })
 
+const createTextEntry = (value: string, id: string, recorded: string) =>
+  Effect.gen(function* () {
+    const decodedId = yield* Schema.decodeUnknown(EntryId)(id).pipe(
+      Effect.mapError((error) => new Error(`Failed to decode ID: ${String(error)}`)),
+    )
+    const decodedRecorded = yield* Schema.decodeUnknown(IsoDateString)(recorded).pipe(
+      Effect.mapError((error) => new Error(`Failed to decode date: ${String(error)}`)),
+    )
+    const entry = {
+      _tag: "TextEntry" as const,
+      id: decodedId,
+      value,
+      recorded: decodedRecorded,
+    }
+    return yield* Schema.decodeUnknown(TextEntry)(entry).pipe(
+      Effect.mapError((error) => new Error(`Failed to validate entry: ${String(error)}`)),
+    )
+  })
+
 const generateGarbage = (count: number) =>
   Effect.gen(function* () {
-    const entries: ClipboardEntry[] = []
+    const entries: Array<ClipboardHistory["clipboardHistory"][number]> = []
     const now = Date.now()
     const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000
 
@@ -83,13 +87,11 @@ const generateGarbage = (count: number) =>
       const type = GARBAGE_TYPES[typeIdx]!
       const value = yield* generateGarbageValue(type, length)
       const randomTime = yield* Random.nextIntBetween(oneYearAgo, now)
+      const id = crypto.randomUUID()
+      const recorded = new Date(randomTime).toISOString()
 
-      entries.push({
-        type: "text",
-        value,
-        recorded: new Date(randomTime).toISOString(),
-        filePath: "",
-      })
+      const entry = yield* createTextEntry(value, id, recorded)
+      entries.push(entry)
     }
     return entries
   })
@@ -97,8 +99,7 @@ const generateGarbage = (count: number) =>
 const main = Effect.gen(function* () {
   const args = process.argv.slice(2)
   const countArg = args[0]
-  const parsed =
-    countArg !== null && countArg !== undefined && countArg !== "" ? parseInt(countArg, 10) : NaN
+  const parsed = countArg !== null && countArg !== undefined && countArg !== "" ? parseInt(countArg, 10) : NaN
   const count = Number.isNaN(parsed) || parsed <= 0 ? 100_000 : parsed
 
   yield* Effect.log(`Populating history with ${count} entries...`)
