@@ -2,7 +2,7 @@ import "opentui-spinner/react"
 
 import { keepPreviousData, useInfiniteQuery, type InfiniteData } from "@tanstack/react-query"
 import { Effect } from "effect"
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { useDebounceValue } from "usehooks-ts"
 
 import { getEntries, searchEntries, type EntriesPage } from "../services/daemon"
@@ -10,7 +10,7 @@ import { getEntries, searchEntries, type EntriesPage } from "../services/daemon"
 import { ClipboardList } from "./clipboard-list"
 import { ContentError } from "./error"
 
-export const App = async () => {
+export const App = (): ReactNode => {
   const [searchQuery, setSearchQuery] = useState("")
   const trimmedQuery = useMemo(() => searchQuery.trim(), [searchQuery])
   const [debouncedQuery] = useDebounceValue(trimmedQuery, 150)

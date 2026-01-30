@@ -15,8 +15,10 @@ export class ClipboardService extends Effect.Service<ClipboardService>()("Clipbo
         stderr: "ignore",
       })
 
-      yield* Effect.promise(async () => proc.stdin.write(text))
-      yield* Effect.promise(async () => proc.stdin.end())
+      yield* Effect.promise(async () => {
+        await proc.stdin.write(text)
+        await proc.stdin.end()
+      })
 
       const exitCode = yield* Effect.promise(async () => proc.exited)
 

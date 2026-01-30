@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect"
 import { ClipboardHistory as ClipboardHistorySchema, type ClipboardEntry } from "../../src/types"
 export type { ClipboardEntry } from "../../src/types"
 
-const dataDir = `${homedir()}/.config/kopa`
+const dataDir = process.env.KOPA_DATA_DIR ?? `${homedir()}/.config/kopa`
 const historyFilePath = `${dataDir}/history.json`
 
 /**
@@ -31,8 +31,10 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
 
     // Write entries to stdin (NUL-delimited for multi-line support)
     const input = entries.map((e) => e.value).join("\0")
-    yield* Effect.promise(async () => proc.stdin.write(input))
-    yield* Effect.promise(async () => proc.stdin.end())
+    yield* Effect.promise(async () => {
+      await proc.stdin.write(input)
+      await proc.stdin.end()
+    })
 
     // Read stdout concurrently with waiting for process to exit
     const stdoutChunks: Uint8Array[] = []
@@ -162,8 +164,10 @@ export const copyToClipboard = (content: string): Effect.Effect<void, Error> =>
       stderr: "ignore",
     })
 
-    yield* Effect.promise(async () => proc.stdin.write(content))
-    yield* Effect.promise(async () => proc.stdin.end())
+    yield* Effect.promise(async () => {
+      await proc.stdin.write(content)
+      await proc.stdin.end()
+    })
 
     const exitCode = yield* Effect.promise(async () => proc.exited)
 

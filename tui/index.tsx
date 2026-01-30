@@ -46,4 +46,4 @@ const run = Effect.tryPromise({
   Effect.provide(BunContext.layer),
 )
 
-run.pipe(Effect.provide(BunContext.layer), BunRuntime.runMain)
+run.pipe(BunRuntime.runMain)

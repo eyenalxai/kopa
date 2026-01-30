@@ -54,6 +54,9 @@ export const ClipboardList = async ({
       }
       setFocusedElement("list")
     } else if (focusedElement === "list" && selectRef.current) {
+      if (entries.length === 0) {
+        return
+      }
       if (key.name === "pageup") {
         selectRef.current.moveUp(10)
       } else if (key.name === "pagedown") {

@@ -87,7 +87,7 @@ const generateGarbage = (count: number) =>
       entries.push({
         value,
         recorded: new Date(randomTime).toISOString(),
-        filePath: "null",
+        filePath: "",
       })
     }
     return entries
@@ -95,8 +95,10 @@ const generateGarbage = (count: number) =>
 
 const main = Effect.gen(function* () {
   const args = process.argv.slice(2)
-  const count =
-    args[0] !== null && args[0] !== undefined && args[0] !== "" ? parseInt(args[0], 10) : 100_000
+  const countArg = args[0]
+  const parsed =
+    countArg !== null && countArg !== undefined && countArg !== "" ? parseInt(countArg, 10) : NaN
+  const count = Number.isNaN(parsed) || parsed <= 0 ? 100_000 : parsed
 
   yield* Effect.log(`Populating history with ${count} entries...`)
 

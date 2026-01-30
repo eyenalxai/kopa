@@ -10,8 +10,9 @@ const isDaemon = args.has("--daemon")
 const isStore = args.has("--store")
 
 const getScriptPath = () => {
-  if (process.argv[1] !== null && process.argv[1] !== undefined && process.argv[1] !== "") {
-    return process.argv[1]
+  const scriptArg = process.argv[1]
+  if (scriptArg !== null && scriptArg !== undefined && scriptArg !== "") {
+    return scriptArg
   }
   return fileURLToPath(import.meta.url)
 }
@@ -22,10 +23,14 @@ const storeProgram = Effect.gen(function* () {
   const reader = Bun.stdin.stream().getReader()
   const chunks: Uint8Array[] = []
 
-  while (true) {
-    const { done, value } = yield* Effect.promise(async () => reader.read())
-    if (done) break
-    chunks.push(value)
+  try {
+    while (true) {
+      const { done, value } = yield* Effect.promise(async () => reader.read())
+      if (done) break
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
   }
 
   const content = Buffer.concat(chunks).toString("utf-8")
@@ -60,6 +65,25 @@ const daemonProgram = Effect.gen(function* () {
     },
   )
 
+  const cleanup = Effect.gen(function* () {
+    yield* Effect.log("Shutting down clipboard monitor...")
+    textProc.kill()
+    imageProc.kill()
+    yield* Effect.promise(async () => {
+      await Promise.allSettled([textProc.exited, imageProc.exited])
+    })
+  })
+
+  yield* Effect.addFinalizer(() => cleanup)
+
+  yield* Effect.sync(() => {
+    const handleSignal = () => {
+      void Effect.runPromise(cleanup)
+    }
+    process.on("SIGINT", handleSignal)
+    process.on("SIGTERM", handleSignal)
+  })
+
   const textStderrStream = Stream.fromAsyncIterable(textProc.stderr, () => Effect.void).pipe(
     Stream.map((chunk) => new TextDecoder().decode(chunk)),
     Stream.tap((err) => Effect.logError(`text watcher stderr: ${err}`)),
@@ -87,7 +111,7 @@ if (isStore) {
   }
 } else if (isDaemon) {
   try {
-    await Effect.runPromise(daemonProgram.pipe(Effect.provide(AppLive)))
+    await Effect.runPromise(daemonProgram.pipe(Effect.provide(AppLive), Effect.scoped))
   } catch (error: unknown) {
     console.error("Daemon error:", error)
     process.exit(1)
