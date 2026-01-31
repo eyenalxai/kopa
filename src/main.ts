@@ -2,6 +2,7 @@ import { BunRuntime } from "@effect/platform-bun"
 import { Effect, Schedule, Layer, Config, Schema } from "effect"
 
 import { ClipboardService } from "./services/clipboard-service"
+import { ConfigService } from "./services/config-service"
 import { HistoryService } from "./services/history-service"
 import { computeHash } from "./utils/hash"
 import { detectImageFormat } from "./utils/image"
@@ -71,6 +72,7 @@ const getScriptPath = Effect.fn("ScriptPath.getScriptPath")(function* () {
 
 const storeProgram = Effect.gen(function* () {
   const history = yield* HistoryService
+  const config = yield* ConfigService
 
   const buffer = yield* Effect.tryPromise({
     try: async () => Bun.readableStreamToArrayBuffer(Bun.stdin.stream()),
@@ -84,7 +86,7 @@ const storeProgram = Effect.gen(function* () {
     return
   }
 
-  const maxSizeMb = yield* Config.number("KOPA_MAX_FILE_SIZE_MB").pipe(Config.withDefault(10))
+  const maxSizeMb = config.maxFileSizeMb
   const maxSizeBytes = maxSizeMb * 1024 * 1024
   if (buffer.length > maxSizeBytes) {
     yield* Effect.log(
@@ -227,7 +229,11 @@ const mainProgram = Effect.gen(function* () {
   }
 })
 
-const AppLive = Layer.mergeAll(HistoryService.Default, ClipboardService.Default)
+const AppLive = Layer.mergeAll(
+  ConfigService.Default,
+  HistoryService.Default,
+  ClipboardService.Default,
+)
 
 const program = mainProgram.pipe(Effect.provide(AppLive), Effect.scoped)
 

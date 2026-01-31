@@ -3,7 +3,7 @@ import { mkdir, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-import { Effect, Schema, Config } from "effect"
+import { Effect, Schema } from "effect"
 
 import { HistoryReadError, HistoryWriteError } from "../errors"
 import { ClipboardHistory, isTextEntry, isImageEntry } from "../types"
@@ -12,15 +12,19 @@ import { getErrorCode } from "../utils/error-helpers"
 import { createLockAcquirer, createSafeLockReleaser } from "../utils/lock"
 import { loadSharp } from "../utils/sharp-loader"
 
+import { ConfigService } from "./config-service"
+
 export class HistoryService extends Effect.Service<HistoryService>()("HistoryService", {
   accessors: true,
+  dependencies: [ConfigService.Default],
   effect: Effect.gen(function* () {
+    const config = yield* ConfigService
     const dataDir = join(homedir(), ".local", "share", "kopa")
     const historyFilePath = `${dataDir}/history.json`
     const lockFilePath = `${dataDir}/history.lock`
     const imagesDirPath = join(dataDir, "images")
     const lockTimeoutMs = 5_000
-    const historyLimit = yield* Config.number("KOPA_HISTORY_LIMIT").pipe(Config.withDefault(1000))
+    const historyLimit = config.historyLimit
 
     yield* Effect.tryPromise({
       try: async () => mkdir(dataDir, { recursive: true }),
