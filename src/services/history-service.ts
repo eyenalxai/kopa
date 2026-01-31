@@ -1,86 +1,16 @@
 import crypto from "node:crypto"
-import { mkdir, open, unlink } from "node:fs/promises"
+import { mkdir, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
 import { Effect, Schema, Config } from "effect"
-import type sharp from "sharp"
 
-import { HistoryReadError, HistoryWriteError, SharpLoadError } from "../errors"
-import {
-  ClipboardHistory,
-  TextEntry,
-  ImageEntry,
-  isTextEntry,
-  isImageEntry,
-  EntryId,
-  ImageHash,
-  IsoDateString,
-  AbsolutePath,
-} from "../types"
-
-const hasErrorCode = (value: unknown): value is { code?: unknown } =>
-  typeof value === "object" && value !== null && "code" in value
-
-const getErrorCode = (error: unknown): string | null => {
-  if (hasErrorCode(error)) {
-    return typeof error.code === "string" ? error.code : null
-  }
-  return null
-}
-
-const decodeEntryField = <A, I>(
-  schema: Schema.Schema<A, I>,
-  value: I,
-  fieldName: string,
-): Effect.Effect<A, HistoryWriteError> =>
-  Schema.decodeUnknown(schema)(value).pipe(
-    Effect.mapError(
-      (error) =>
-        new HistoryWriteError({ message: `Failed to decode ${fieldName}: ${String(error)}` }),
-    ),
-  )
-
-const createTextEntry = (value: string, id: string, recorded: string) =>
-  Effect.gen(function* () {
-    const decodedId = yield* decodeEntryField(EntryId, id, "entry ID")
-    const decodedRecorded = yield* decodeEntryField(IsoDateString, recorded, "recorded date")
-    const entry = { _tag: "TextEntry" as const, id: decodedId, value, recorded: decodedRecorded }
-    return yield* decodeEntryField(TextEntry, entry, "text entry")
-  })
-
-const createImageEntry = (
-  value: string,
-  id: string,
-  recorded: string,
-  filePath: string,
-  hash: string,
-) =>
-  Effect.gen(function* () {
-    const decodedId = yield* decodeEntryField(EntryId, id, "entry ID")
-    const decodedRecorded = yield* decodeEntryField(IsoDateString, recorded, "recorded date")
-    const decodedPath = yield* decodeEntryField(AbsolutePath, filePath, "image path")
-    const decodedHash = yield* decodeEntryField(ImageHash, hash, "image hash")
-    const entry = {
-      _tag: "ImageEntry" as const,
-      id: decodedId,
-      value,
-      recorded: decodedRecorded,
-      filePath: decodedPath,
-      hash: decodedHash,
-    }
-    return yield* decodeEntryField(ImageEntry, entry, "image entry")
-  })
-
-type SharpModule = { default?: typeof sharp } & typeof sharp
-
-const isSharpModule = (mod: unknown): mod is SharpModule => {
-  if (typeof mod !== "object" || mod === null) return false
-  const hasDefault =
-    "default" in mod && typeof (mod as { default?: unknown }).default === "function"
-  const isCallable = typeof mod === "function"
-  return hasDefault || isCallable
-}
+import { HistoryReadError, HistoryWriteError } from "../errors"
+import { ClipboardHistory, isTextEntry, isImageEntry } from "../types"
+import { createTextEntry, createImageEntry } from "../utils/entries"
+import { getErrorCode } from "../utils/error-helpers"
+import { createLockAcquirer, createSafeLockReleaser } from "../utils/lock"
+import { loadSharp } from "../utils/sharp-loader"
 
 export class HistoryService extends Effect.Service<HistoryService>()("HistoryService", {
   accessors: true,
@@ -90,6 +20,7 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
     const lockFilePath = `${dataDir}/history.lock`
     const imagesDirPath = join(dataDir, "images")
     const lockTimeoutMs = 5_000
+    const historyLimit = yield* Config.number("KOPA_HISTORY_LIMIT").pipe(Config.withDefault(1000))
 
     yield* Effect.tryPromise({
       try: async () => mkdir(dataDir, { recursive: true }),
@@ -102,70 +33,36 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
         new HistoryWriteError({ message: `Failed to create images directory: ${String(error)}` }),
     })
 
-    const loadSharp = Effect.fn("HistoryService.loadSharp")(function* () {
-      const sharpPath = yield* Config.string("SHARP_PATH").pipe(Config.withDefault(""))
-      const load = async (path: string) => {
-        const mod: unknown = await import(path)
-        if (!isSharpModule(mod)) throw new Error(`Invalid sharp module at ${path}`)
-        return mod.default ?? mod
-      }
-      if (sharpPath !== "") {
-        return yield* Effect.tryPromise({
-          try: () => load(sharpPath),
-          catch: (error) =>
-            new SharpLoadError({
-              message: `Failed to load sharp: ${String(error)}`,
-              path: sharpPath,
-            }),
-        })
-      }
-      return yield* Effect.tryPromise({
-        try: () => load("sharp"),
-        catch: (error) => new SharpLoadError({ message: `Failed to load sharp: ${String(error)}` }),
-      })
-    })
+    const acquire = createLockAcquirer(lockFilePath, lockTimeoutMs)
+    const releaseLockSafe = createSafeLockReleaser(lockFilePath)
 
-    const acquireLock = Effect.fn("HistoryService.acquireLock")(function* () {
-      const startedAt = Date.now()
-      while (true) {
-        const acquired = yield* Effect.tryPromise({
-          try: async () => {
-            try {
-              const handle = await open(lockFilePath, "wx")
-              await handle.close()
-              return true
-            } catch (error) {
-              if (getErrorCode(error) === "EEXIST") return false
-              throw error
-            }
-          },
-          catch: (error) =>
-            new HistoryWriteError({ message: `Failed to acquire lock: ${String(error)}` }),
-        })
-        if (acquired) return
-        if (Date.now() - startedAt >= lockTimeoutMs) {
-          return yield* Effect.fail(
-            new HistoryWriteError({ message: `Lock timeout after ${lockTimeoutMs}ms` }),
+    const cleanupOldEntries = Effect.fn("HistoryService.cleanupOldEntries")(function* (
+      history: ClipboardHistory,
+    ) {
+      if (history.clipboardHistory.length <= historyLimit) return history
+      const entriesToRemove = history.clipboardHistory.slice(historyLimit)
+      const removedCount = entriesToRemove.length
+      for (const entry of entriesToRemove) {
+        if (isImageEntry(entry)) {
+          yield* Effect.tryPromise({
+            try: async () => unlink(entry.filePath),
+            catch: (error) => error,
+          }).pipe(
+            Effect.catchAll((error) => {
+              const code = getErrorCode(error)
+              if (code === "ENOENT") {
+                return Effect.log(`Image file already deleted: ${entry.filePath}`)
+              }
+              return Effect.logError(
+                `Failed to delete image file: ${entry.filePath} - ${String(error)}`,
+              )
+            }),
           )
         }
-        yield* Effect.sleep("50 millis")
       }
+      yield* Effect.log(`Removed ${removedCount} old entries (limit: ${historyLimit})`)
+      return { clipboardHistory: history.clipboardHistory.slice(0, historyLimit) }
     })
-
-    const releaseLock = Effect.fn("HistoryService.releaseLock")(function* () {
-      yield* Effect.tryPromise({
-        try: async () => {
-          try {
-            await unlink(lockFilePath)
-          } catch (error) {
-            if (getErrorCode(error) !== "ENOENT") throw error
-          }
-        },
-        catch: (error) =>
-          new HistoryWriteError({ message: `Failed to release lock: ${String(error)}` }),
-      })
-    })
-    const releaseLockSafe = releaseLock().pipe(Effect.catchAll(() => Effect.void))
 
     const read = Effect.fn("HistoryService.read")(function* () {
       const file = Bun.file(historyFilePath)
@@ -197,14 +94,14 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
     const writeLocked = Effect.fn("HistoryService.writeLocked")(function* (
       history: ClipboardHistory,
     ) {
-      yield* acquireLock()
+      yield* acquire()
       return yield* write(history).pipe(Effect.ensuring(releaseLockSafe))
     })
 
     const addText = Effect.fn("HistoryService.addText")(function* (value: string) {
       const trimmedValue = value.trim()
       if (!trimmedValue) return
-      yield* acquireLock()
+      yield* acquire()
       return yield* Effect.gen(function* () {
         const history = yield* read()
         const firstEntry = history.clipboardHistory[0]
@@ -215,14 +112,20 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
         const id = crypto.randomUUID()
         const recorded = new Date().toISOString()
         const newEntry = yield* createTextEntry(trimmedValue, id, recorded)
-        if (existingIndex >= 0) {
-          const filtered = history.clipboardHistory.filter((_, i) => i !== existingIndex)
-          yield* write({ clipboardHistory: [newEntry, ...filtered] })
-          yield* Effect.log("Bumped text entry to top", { valueLength: trimmedValue.length })
-        } else {
-          yield* write({ clipboardHistory: [newEntry, ...history.clipboardHistory] })
-          yield* Effect.log("Added text entry", { valueLength: trimmedValue.length })
-        }
+        const newHistory =
+          existingIndex >= 0
+            ? {
+                clipboardHistory: [
+                  newEntry,
+                  ...history.clipboardHistory.filter((_, i) => i !== existingIndex),
+                ],
+              }
+            : { clipboardHistory: [newEntry, ...history.clipboardHistory] }
+        const cleanedHistory = yield* cleanupOldEntries(newHistory)
+        yield* write(cleanedHistory)
+        yield* Effect.log(existingIndex >= 0 ? "Bumped text entry to top" : "Added text entry", {
+          valueLength: trimmedValue.length,
+        })
       }).pipe(Effect.ensuring(releaseLockSafe))
     })
 
@@ -231,7 +134,7 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
       buffer: Buffer,
       displayValue: string,
     ) {
-      yield* acquireLock()
+      yield* acquire()
       return yield* Effect.gen(function* () {
         const history = yield* read()
         const imagePath = join(imagesDirPath, `${hash}.png`)
@@ -257,17 +160,24 @@ export class HistoryService extends Effect.Service<HistoryService>()("HistorySer
           catch: (error) =>
             new HistoryWriteError({ message: `Failed to save image: ${String(error)}` }),
         })
-        const id = crypto.randomUUID()
-        const recorded = new Date().toISOString()
+        const id = crypto.randomUUID(),
+          recorded = new Date().toISOString()
         const newEntry = yield* createImageEntry(displayValue, id, recorded, imagePath, hash)
-        if (existingIndex >= 0) {
-          const filtered = history.clipboardHistory.filter((_, i) => i !== existingIndex)
-          yield* write({ clipboardHistory: [newEntry, ...filtered] })
-          yield* Effect.log("Bumped image entry to top", { hash, path: imagePath })
-        } else {
-          yield* write({ clipboardHistory: [newEntry, ...history.clipboardHistory] })
-          yield* Effect.log("Added image entry", { hash, path: imagePath })
-        }
+        const newHistory =
+          existingIndex >= 0
+            ? {
+                clipboardHistory: [
+                  newEntry,
+                  ...history.clipboardHistory.filter((_, i) => i !== existingIndex),
+                ],
+              }
+            : { clipboardHistory: [newEntry, ...history.clipboardHistory] }
+        const cleanedHistory = yield* cleanupOldEntries(newHistory)
+        yield* write(cleanedHistory)
+        yield* Effect.log(existingIndex >= 0 ? "Bumped image entry to top" : "Added image entry", {
+          hash,
+          path: imagePath,
+        })
       }).pipe(Effect.ensuring(releaseLockSafe))
     })
 

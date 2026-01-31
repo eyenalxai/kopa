@@ -121,7 +121,7 @@ const fzfFilter = Effect.fn("fzfFilter")(function* (
 export const getEntries = (
   cursor?: number,
   limit: number = 50,
-): Effect.Effect<EntriesPage, HistoryReadError | HistoryWriteError> =>
+): Effect.Effect<EntriesPage, HistoryReadError | HistoryWriteError | ConfigError.ConfigError> =>
   Effect.gen(function* () {
     const historyService = yield* HistoryService
     const history = yield* historyService.read()
@@ -146,7 +146,10 @@ export const searchEntries = (
   query: string,
   cursor?: number,
   limit: number = 50,
-): Effect.Effect<EntriesPage, HistoryReadError | HistoryWriteError | FzfError> =>
+): Effect.Effect<
+  EntriesPage,
+  HistoryReadError | HistoryWriteError | FzfError | ConfigError.ConfigError
+> =>
   Effect.gen(function* () {
     const historyService = yield* HistoryService
     const history = yield* historyService.read()
