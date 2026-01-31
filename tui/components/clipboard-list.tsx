@@ -2,7 +2,7 @@ import type { ClipboardEntry } from "../services/daemon"
 import type { SelectRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import { Effect } from "effect"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useTheme } from "../providers/theme"
 import { useToast } from "../providers/toast"
@@ -44,6 +44,12 @@ export const ClipboardList = ({
       })),
     [entries],
   )
+
+  useEffect(() => {
+    if (selectRef.current) {
+      selectRef.current.setSelectedIndex(0)
+    }
+  }, [searchQuery])
 
   useKeyboard((key) => {
     if (key.name === "tab") {
