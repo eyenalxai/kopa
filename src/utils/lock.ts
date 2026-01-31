@@ -25,12 +25,12 @@ export const createLockAcquirer = (lockFilePath: string, lockTimeoutMs: number) 
           new HistoryWriteError({ message: `Failed to acquire lock: ${String(error)}` }),
       })
       if (acquired) return
+      yield* Effect.sleep("50 millis")
       if (Date.now() - startedAt >= lockTimeoutMs) {
         return yield* Effect.fail(
           new HistoryWriteError({ message: `Lock timeout after ${lockTimeoutMs}ms` }),
         )
       }
-      yield* Effect.sleep("50 millis")
     }
   })
 

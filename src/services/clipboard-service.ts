@@ -23,11 +23,9 @@ export class ClipboardService extends Effect.Service<ClipboardService>()("Clipbo
       const exitCode = yield* Effect.promise(async () => proc.exited)
 
       if (exitCode !== 0) {
-        yield* Effect.fail(
-          new ClipboardCopyError({
-            message: `wl-copy exited with code ${exitCode}`,
-          }),
-        )
+        return yield* new ClipboardCopyError({
+          message: `wl-copy exited with code ${exitCode}`,
+        })
       }
     })
 
@@ -41,11 +39,9 @@ export class ClipboardService extends Effect.Service<ClipboardService>()("Clipbo
       const exitCode = yield* Effect.promise(async () => proc.exited)
 
       if (exitCode !== 0) {
-        yield* Effect.fail(
-          new ClipboardCopyError({
-            message: `wl-copy exited with code ${exitCode} when copying image`,
-          }),
-        )
+        return yield* new ClipboardCopyError({
+          message: `wl-copy exited with code ${exitCode} when copying image`,
+        })
       }
     })
 

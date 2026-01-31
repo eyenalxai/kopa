@@ -25,6 +25,11 @@ export class DaemonError extends Schema.TaggedError<DaemonError>()("DaemonError"
   message: Schema.String,
 }) {}
 
+export class TuiStartError extends Schema.TaggedError<TuiStartError>()("TuiStartError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.String),
+}) {}
+
 const isCompiledBinary = Effect.fn("BinaryMode.isCompiledBinary")(function* () {
   const binaryPath = yield* Config.string("KOPA_BINARY_PATH").pipe(Config.withDefault(""))
   if (binaryPath !== "") {
@@ -216,7 +221,11 @@ const tuiProgram = Effect.tryPromise({
   try: async () => {
     await import("../tui/index")
   },
-  catch: (error) => new Error(`Failed to start TUI: ${String(error)}`),
+  catch: (error) =>
+    new TuiStartError({
+      message: "Failed to start TUI",
+      cause: String(error),
+    }),
 })
 
 const mainProgram = Effect.gen(function* () {
