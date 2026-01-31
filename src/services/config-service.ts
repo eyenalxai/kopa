@@ -43,7 +43,6 @@ export class ConfigService extends Effect.Service<ConfigService>()("ConfigServic
       })
 
       if (!exists) {
-        yield* Effect.log("Config file not found, using defaults", { path: configPath })
         return defaultConfig
       }
 
@@ -93,20 +92,6 @@ export class ConfigService extends Effect.Service<ConfigService>()("ConfigServic
       historyLimit: envHistoryLimit,
       maxFileSizeMb: envMaxFileSizeMb,
     }
-
-    const source =
-      envHistoryLimit === fileConfig.historyLimit && envMaxFileSizeMb === fileConfig.maxFileSizeMb
-        ? fileConfig.historyLimit === defaultConfig.historyLimit &&
-          fileConfig.maxFileSizeMb === defaultConfig.maxFileSizeMb
-          ? "defaults"
-          : "config-file"
-        : "env-vars"
-
-    yield* Effect.log("Config loaded", {
-      historyLimit: finalConfig.historyLimit,
-      maxFileSizeMb: finalConfig.maxFileSizeMb,
-      source,
-    })
 
     return finalConfig
   }),
