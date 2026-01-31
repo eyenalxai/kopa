@@ -1,6 +1,8 @@
 import { BunRuntime } from "@effect/platform-bun"
 import { Effect, Schedule, Layer, Config, Schema } from "effect"
 
+import { makeTuiLoggerLayer } from "../tui/services/logger"
+
 import { ClipboardService } from "./services/clipboard-service"
 import { ConfigService } from "./services/config-service"
 import { HistoryService } from "./services/history-service"
@@ -10,6 +12,7 @@ import { detectImageFormat } from "./utils/image"
 const args = new Set(process.argv.slice(2))
 const isDaemon = args.has("--daemon")
 const isStore = args.has("--store")
+const isTui = !isDaemon && !isStore
 
 export class ScriptPathError extends Schema.TaggedError<ScriptPathError>()("ScriptPathError", {
   message: Schema.String,
@@ -235,8 +238,6 @@ const AppLive = Layer.mergeAll(
   ClipboardService.Default,
 )
 
-const program = mainProgram.pipe(Effect.provide(AppLive), Effect.scoped)
-
 const describeError = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message
@@ -253,6 +254,15 @@ const describeError = (error: unknown): string => {
     return "Unknown error"
   }
 }
+
+const program = Effect.gen(function* () {
+  if (isTui) {
+    const loggerLayer = yield* makeTuiLoggerLayer
+    const TuiLive = Layer.merge(AppLive, loggerLayer)
+    return yield* mainProgram.pipe(Effect.provide(TuiLive), Effect.scoped)
+  }
+  return yield* mainProgram.pipe(Effect.provide(AppLive), Effect.scoped)
+})
 
 program.pipe(
   Effect.catchAll((error) =>
